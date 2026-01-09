@@ -45,6 +45,11 @@ class DailyDashApp(App):
         ("r", "reset_timer", "Reset Timer"),
         ("n", "toggle_noise", "Toggle Noise"),
         ("s", "open_settings", "Settings"),
+        # Section Jumps
+        ("1", "focus_tasks", "Tasks"),
+        ("2", "focus_timer", "Timer"),
+        ("3", "focus_notes", "Notes"),
+        ("4", "focus_links", "Links"),
     ]
 
     def __init__(self):
@@ -122,6 +127,28 @@ class DailyDashApp(App):
             self.notify("Brown Noise: ON")
         else:
             self.notify("Brown Noise: OFF")
+
+    # --- Navigation Actions ---
+    def action_focus_tasks(self):
+        try:
+             # Just focus the first input task, or the widget itself
+             self.dashboard_screen.query_one("#task-input-0").focus()
+        except: pass
+
+    def action_focus_timer(self):
+        try:
+             self.dashboard_screen.query_one("#timer", TimerWidget).focus()
+        except: pass
+
+    def action_focus_notes(self):
+        try:
+             self.dashboard_screen.query_one("#brain-dump-area").focus()
+        except: pass
+
+    def action_focus_links(self):
+        try:
+             self.dashboard_screen.query_one("#link-input").focus()
+        except: pass
 
     def on_mount(self) -> None:
         self.install_screen(self.dashboard_screen, name="dashboard")

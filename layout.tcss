@@ -97,6 +97,20 @@ TimerWidget {
     text-align: center;
 }
 
+#timer-progress {
+    width: 100%;
+    height: 1;
+    margin: 1 0;
+    tint: green 80%; /* Textual specific or just relies on built-in */
+    background: $surface-lighten-1;
+}
+
+Bar > .bar--bar {
+    color: green;
+    background: green;
+}
+
+
 BrainDumpWidget {
     height: 100%;
 }

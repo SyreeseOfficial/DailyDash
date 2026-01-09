@@ -286,10 +286,10 @@ class SettingsScreen(Screen):
         margin-bottom: 1;
     }
     Input {
-        margin-bottom: 2;
+        margin-bottom: 1;
     }
     Checkbox {
-        margin-bottom: 1;
+        margin-bottom: 0;
         width: 100%;
     }
     .buttons {
@@ -308,11 +308,15 @@ class SettingsScreen(Screen):
             yield Label("[bold yellow]Settings[/]")
             
             # Water Goal
-            yield Label("Daily Water Goal:")
+            yield Label("[bold]Daily Water Goal[/]:")
             yield Input(placeholder="e.g 2000", id="set-water", type="integer")
 
+            # Pomodoro Defaults
+            yield Label("[bold]Timer Defaults (min)[/]:")
+            yield Input(placeholder="Focus (e.g. 25)", id="set-focus-dur", type="integer")
+            
             # Nags
-            yield Label("Health Nags:")
+            yield Label("[bold]Health Nags[/]:")
             yield Checkbox("Enable 'Stand Up' (60m)", id="set-stand")
             yield Checkbox("Enable 'Eye Strain' (20m)", id="set-eyes")
 
@@ -332,6 +336,7 @@ class SettingsScreen(Screen):
         app_set = dm.get("app_settings")
 
         self.query_one("#set-water", Input).value = str(profile.get("daily_water_goal", 2000))
+        self.query_one("#set-focus-dur", Input).value = str(app_set.get("default_focus_duration", 25))
         self.query_one("#set-stand", Checkbox).value = app_set.get("nag_stand_up", True)
         self.query_one("#set-eyes", Checkbox).value = app_set.get("nag_eye_strain", True)
         self.query_one("#set-audio", Checkbox).value = app_set.get("audio_enabled", True)
@@ -357,6 +362,11 @@ class SettingsScreen(Screen):
         nag_eyes = self.query_one("#set-eyes", Checkbox).value
         audio = self.query_one("#set-audio", Checkbox).value
         
+        try:
+            focus_dur = int(self.query_one("#set-focus-dur", Input).value)
+            dm.config["app_settings"]["default_focus_duration"] = focus_dur
+        except: pass
+
         dm.config["app_settings"]["nag_stand_up"] = nag_stand
         dm.config["app_settings"]["nag_eye_strain"] = nag_eyes
         dm.config["app_settings"]["audio_enabled"] = audio

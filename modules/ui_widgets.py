@@ -59,8 +59,22 @@ class TimerWidget(Static):
         yield Label("P: Start/Pause | R: Reset | D: Duration", classes="help-text")
 
     def on_mount(self) -> None:
-        self.duration_idx = self.DEFAULT_IDX
-        self.current_duration = self.DURATIONS[self.duration_idx]
+        # Check settings for default
+        try:
+             settings = self.app.data_manager.get("app_settings", {})
+             default_mins = settings.get("default_focus_duration", 25)
+             # Find closest index or just override current
+             self.current_duration = default_mins * 60
+             
+             # Try to match index for cycling continuity
+             for i, d in enumerate(self.DURATIONS):
+                 if d == self.current_duration:
+                     self.duration_idx = i
+                     break
+        except:
+             self.duration_idx = self.DEFAULT_IDX
+             self.current_duration = self.DURATIONS[self.duration_idx]
+
         self.time_left = self.current_duration
         self.running = False
         
