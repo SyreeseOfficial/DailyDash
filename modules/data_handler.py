@@ -39,7 +39,8 @@ class DataManager:
 
     def __init__(self):
         self.config = self.load_config()
-        self.check_new_day()
+        # We don't auto-save setup here anymore to allow UI flow to handle it
+        # self.check_new_day()
 
     def get_default_config(self):
         return self.DEFAULT_CONFIG.copy()
@@ -62,25 +63,41 @@ class DataManager:
         except IOError as e:
             print(f"Error saving config: {e}")
 
-    def check_new_day(self):
-        """Checks if today is a new day compared to last_login_date."""
+    def is_new_day(self):
+        """Returns True if today is different from last login date."""
         today_str = date.today().isoformat()
         last_login = self.config["daily_state"].get("last_login_date", "")
+        return last_login != today_str
 
-        if last_login != today_str:
-            # It's a new day! Reset counters
-            self.config["daily_state"]["last_login_date"] = today_str
-            self.config["daily_state"]["current_water_intake"] = 0
-            # Reset tasks? PRD says "Tasks persist only for the current date. They do not roll over"
-            self.config["daily_state"]["tasks"] = [
-                {"id": 1, "text": "", "done": False},
-                {"id": 2, "text": "", "done": False},
-                {"id": 3, "text": "", "done": False}
-            ]
-            self.config["daily_state"]["habit_streak"]["code"] = False
-            self.config["daily_state"]["habit_streak"]["no_sugar"] = False
-            
-            self.save_config()
+    def check_new_day(self):
+        """Deprecated: Logic moved to is_new_day + confirm_new_day"""
+        pass
+
+    def confirm_new_day(self):
+        """Commit the new day reset logic to config."""
+        today_str = date.today().isoformat()
+        
+        self.config["daily_state"]["last_login_date"] = today_str
+        self.config["daily_state"]["current_water_intake"] = 0
+        self.config["daily_state"]["tasks"] = [
+            {"id": 1, "text": "", "done": False},
+            {"id": 2, "text": "", "done": False},
+            {"id": 3, "text": "", "done": False}
+        ]
+        self.config["daily_state"]["habit_streak"]["code"] = False
+        self.config["daily_state"]["habit_streak"]["no_sugar"] = False
+        
+        self.save_config()
+
+    def undo_water_intake(self):
+        """Undo the last added container of water, min 0."""
+        container = self.get("user_profile").get("container_size", 250)
+        current = self.get("daily_state").get("current_water_intake", 0)
+        
+        new_val = max(0, current - container)
+        self.config["daily_state"]["current_water_intake"] = new_val
+        self.save_config()
+        return new_val
 
     def get(self, key, default=None):
         return self.config.get(key, default)

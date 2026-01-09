@@ -47,25 +47,35 @@ class TaskListWidget(Static):
 
 class TimerWidget(Static):
     """Pomodoro Timer."""
-    FOCUS_TIME = 25 * 60
-    BREAK_TIME = 5 * 60
-
+    DURATIONS = [25 * 60, 50 * 60, 15 * 60]
+    
     def compose(self) -> ComposeResult:
         yield Label("Pomodoro", classes="section-header")
         yield Label("25:00", id="timer-display")
+        yield ProgressBar(total=self.DURATIONS[0], show_eta=False, id="timer-progress")
         yield Label("Stopped", id="timer-status")
-        yield Label("P: Start/Pause | R: Reset | N: Noise", classes="help-text")
+        yield Label("P: Start/Pause | R: Reset | D: Duration", classes="help-text")
 
     def on_mount(self) -> None:
-        self.time_left = self.FOCUS_TIME
+        self.duration_idx = 0
+        self.current_duration = self.DURATIONS[0]
+        self.time_left = self.current_duration
         self.running = False
-        self.is_break = False
+        
+        self.query_one("#timer-progress", ProgressBar).total = self.current_duration
+        self.query_one("#timer-progress", ProgressBar).progress = 0
+        
         self.set_interval(1, self.tick)
 
     def tick(self) -> None:
         if self.running and self.time_left > 0:
             self.time_left -= 1
             self.update_display()
+            
+            # Update progress (inverse - how much time elapsed)
+            elapsed = self.current_duration - self.time_left
+            self.query_one("#timer-progress", ProgressBar).progress = elapsed
+            
             if self.time_left == 0:
                  self.running = False
                  self.query_one("#timer-status", Label).update("TIME UP!")
@@ -85,10 +95,25 @@ class TimerWidget(Static):
 
     def reset_timer(self):
         self.running = False
-        self.time_left = self.FOCUS_TIME
+        self.time_left = self.current_duration
         self.update_display()
         self.query_one("#timer-status", Label).update("Stopped")
         self.styles.background = None
+        self.query_one("#timer-progress", ProgressBar).progress = 0
+
+    def cycle_duration(self):
+        if self.running:
+            return # Don't change while running to avoid logic mess
+            
+        self.duration_idx = (self.duration_idx + 1) % len(self.DURATIONS)
+        self.current_duration = self.DURATIONS[self.duration_idx]
+        self.time_left = self.current_duration
+        
+        self.query_one("#timer-progress", ProgressBar).total = self.current_duration
+        self.query_one("#timer-progress", ProgressBar).progress = 0
+        self.update_display()
+        
+        self.app.notify(f"Timer set to {self.current_duration//60} mins")
 
 from textual.widgets import TextArea, ListView, ListItem
 
@@ -111,7 +136,7 @@ import webbrowser
 class ParkingLotWidget(Static):
     """Link saver."""
     def compose(self) -> ComposeResult:
-        yield Label("Parking Lot", classes="section-header")
+        yield Label("Saved URLs", classes="section-header")
         yield Input(placeholder="Paste URL...", id="link-input")
         yield ListView(id="link-list")
 
@@ -198,6 +223,10 @@ class WaterTrackerWidget(Static):
         self.app.data_manager.save_config()
         self.update_display()
 
+    def undo_water(self):
+        self.app.data_manager.undo_water_intake()
+        self.update_display()
+
 from modules.weather_api import get_weather_for_city
 import psutil
 
@@ -263,5 +292,8 @@ class SystemVitalsWidget(Static):
         battery = psutil.sensors_battery()
         bat_str = f" | Bat: {int(battery.percent)}%" if battery else ""
         
-        display = f"CPU: {cpu}% | RAM: {ram}%{bat_str}"
+        disk = psutil.disk_usage('/')
+        disk_str = f" | Disk: {disk.percent}%"
+
+        display = f"CPU: {cpu}% | RAM: {ram}%{disk_str}{bat_str}"
         self.query_one("#vitals-display", Label).update(display)
