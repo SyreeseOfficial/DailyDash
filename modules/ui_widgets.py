@@ -140,13 +140,18 @@ class ParkingLotWidget(Static):
         try:
             link_label = event.item.children[0]
             if isinstance(link_label, Label):
-                url = str(link_label.renderable) # or str(link_label.render()) or just accessing .renderable if it's Text
-                # Textual Label content:
-                url = str(link_label.renderable) 
-                webbrowser.open(url)
-                self.notify(f"Opening: {url}")
-        except:
-            pass
+                # Ensure we get the raw string content
+                url = str(link_label.renderable).strip()
+                if not url.startswith("http"):
+                    url = "https://" + url
+                
+                try:
+                    webbrowser.open(url)
+                    self.notify(f"Opening: {url}")
+                except Exception as e:
+                    self.notify(f"Failed to open link: {e}", severity="error")
+        except Exception as e:
+             self.notify(f"Error resolving link: {e}", severity="error")
 
 class WaterTrackerWidget(Static):
     """Water intake tracker."""
@@ -236,7 +241,8 @@ class WeatherWidget(Static):
 
     def async_weather_update(self):
         city = self.app.data_manager.get("user_profile").get("city", "Unknown")
-        weather_str = get_weather_for_city(city)
+        unit = self.app.data_manager.get("user_profile").get("unit_system", "metric")
+        weather_str = get_weather_for_city(city, unit_system=unit)
         # Update UI from worker
         self.query_one("#weather-display", Label).update(weather_str)
 

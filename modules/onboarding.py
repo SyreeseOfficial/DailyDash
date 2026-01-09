@@ -68,6 +68,30 @@ class SetupWizard(Screen):
         
         yield Footer()
 
+    def on_mount(self) -> None:
+        # Pre-fill values if they exist
+        try:
+            profile = self.app.data_manager.get("user_profile")
+            if profile:
+                # Units
+                unit = profile.get("unit_system", "metric")
+                if unit == "imperial":
+                    self.query_one("#imperial", RadioButton).value = True
+                else:
+                    self.query_one("#metric", RadioButton).value = True
+                
+                # Container
+                size = profile.get("container_size")
+                if size:
+                    self.query_one("#container-input", Input).value = str(size)
+                
+                # City
+                city = profile.get("city")
+                if city and city != "Unknown":
+                    self.query_one("#city-input", Input).value = city
+        except Exception:
+            pass # fallback to empty/defaults
+
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "start-btn":
             self.query_one("#step-1").add_class("hidden")
@@ -107,7 +131,9 @@ class SetupWizard(Screen):
         app.data_manager.config["setup_complete"] = True
         app.data_manager.save_config()
 
-        app.pop_screen()
-        # In a real app we might push the Dashboard here or ensure Main loads it
-        app.install_screen(self.app.dashboard_screen, name="dashboard")
-        app.push_screen("dashboard")
+        # Transition to dashboard (replace setup screen)
+        # Ensure dashboard is known to the app (it should be installed in main.py)
+        if not app.is_screen_installed("dashboard"):
+             app.install_screen(self.app.dashboard_screen, name="dashboard")
+        
+        app.switch_screen("dashboard")

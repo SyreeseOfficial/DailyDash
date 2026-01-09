@@ -1,6 +1,6 @@
 import requests
 
-def get_weather_for_city(city_name):
+def get_weather_for_city(city_name, unit_system="metric"):
     """
     Fetches current weather for a city name using OpenMeteo.
     Returns a formatted string or error message.
@@ -21,16 +21,15 @@ def get_weather_for_city(city_name):
         lon = geo_data["results"][0]["longitude"]
 
         # 2. Weather
-        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        temp_unit = "fahrenheit" if unit_system == "imperial" else "celsius"
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&temperature_unit={temp_unit}"
+        
         w_res = requests.get(weather_url, timeout=5)
         w_data = w_res.json()
 
         if "current_weather" in w_data:
             cw = w_data["current_weather"]
             temp = cw["temperature"]
-            # OpenMeteo returns Celsius by default if unit not specified
-            # We could handle unit conversion based on config passing, but to keep simple:
-            # We'll assume C for now or check if we want F. API supports '&temperature_unit=fahrenheit'
             
             # Simple condition mapping
             code = cw.get("weathercode", 0)
@@ -39,7 +38,8 @@ def get_weather_for_city(city_name):
             if code > 50: icon = "🌧️"
             if code > 70: icon = "❄️"
             
-            return f"{city_name}: {icon} {temp}°C"
+            unit_ci = "F" if unit_system == "imperial" else "C"
+            return f"{city_name}: {icon} {temp}°{unit_ci}"
         
         return "Weather Unavailable"
 

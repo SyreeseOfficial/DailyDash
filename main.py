@@ -41,6 +41,7 @@ class DailyDashApp(App):
         ("p", "toggle_timer", "Start/Pause Timer"),
         ("r", "reset_timer", "Reset Timer"),
         ("n", "toggle_noise", "Toggle Noise"),
+        ("s", "open_settings", "Settings"),
     ]
 
     def __init__(self):
@@ -48,6 +49,10 @@ class DailyDashApp(App):
         self.data_manager = DataManager()
         self.audio_manager = AudioManager()
         self.dashboard_screen = DashboardScreen() # Keep a reference
+
+    def action_open_settings(self):
+        # Re-run setup wizard as settings
+        self.switch_screen(SetupWizard())
 
     def action_add_water(self):
         try:
