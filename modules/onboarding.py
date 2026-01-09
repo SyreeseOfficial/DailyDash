@@ -1,5 +1,5 @@
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Button, Label, Input, RadioSet, RadioButton
+from textual.widgets import Header, Footer, Button, Label, Input, RadioSet, RadioButton, Checkbox
 from textual.containers import Container, Vertical
 from textual import on
 from modules.ui_widgets import TimerWidget
@@ -267,3 +267,109 @@ class DailyWizard(Screen):
              self.app.notify("Momentum! Timer Started.")
         except Exception as e:
             self.app.notify(f"Could not start timer: {e}")
+
+class SettingsScreen(Screen):
+    """Expanded settings menu."""
+    CSS = """
+    SettingsScreen {
+        align: center middle;
+    }
+    Container {
+        width: 60;
+        height: auto;
+        border: solid yellow;
+        padding: 1 2;
+        background: $surface;
+    }
+    Label {
+        width: 100%;
+        margin-bottom: 1;
+    }
+    Input {
+        margin-bottom: 2;
+    }
+    Checkbox {
+        margin-bottom: 1;
+        width: 100%;
+    }
+    .buttons {
+        layout: horizontal;
+        align: center middle;
+        margin-top: 2;
+    }
+    Button {
+        margin: 0 1;
+    }
+    """
+
+    def compose(self):
+        yield Header()
+        with Container():
+            yield Label("[bold yellow]Settings[/]")
+            
+            # Water Goal
+            yield Label("Daily Water Goal:")
+            yield Input(placeholder="e.g 2000", id="set-water", type="integer")
+
+            # Nags
+            yield Label("Health Nags:")
+            yield Checkbox("Enable 'Stand Up' (60m)", id="set-stand")
+            yield Checkbox("Enable 'Eye Strain' (20m)", id="set-eyes")
+
+            # Audio
+            yield Label("Audio:")
+            yield Checkbox("Enable Brown Noise System", id="set-audio")
+
+            with Container(classes="buttons"):
+                yield Button("Save", variant="success", id="save-settings")
+                yield Button("Cancel", id="cancel-settings")
+        yield Footer()
+
+    def on_mount(self):
+        # Load current config
+        dm = self.app.data_manager
+        profile = dm.get("user_profile")
+        app_set = dm.get("app_settings")
+
+        self.query_one("#set-water", Input).value = str(profile.get("daily_water_goal", 2000))
+        self.query_one("#set-stand", Checkbox).value = app_set.get("nag_stand_up", True)
+        self.query_one("#set-eyes", Checkbox).value = app_set.get("nag_eye_strain", True)
+        self.query_one("#set-audio", Checkbox).value = app_set.get("audio_enabled", True)
+
+    def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id == "save-settings":
+            self.save_settings()
+        elif event.button.id == "cancel-settings":
+            self.app.switch_screen("dashboard")
+
+    def save_settings(self):
+        dm = self.app.data_manager
+        
+        # User Profile
+        try:
+            water = int(self.query_one("#set-water", Input).value)
+            dm.config["user_profile"]["daily_water_goal"] = water
+        except:
+            pass
+            
+        # App Settings
+        nag_stand = self.query_one("#set-stand", Checkbox).value
+        nag_eyes = self.query_one("#set-eyes", Checkbox).value
+        audio = self.query_one("#set-audio", Checkbox).value
+        
+        dm.config["app_settings"]["nag_stand_up"] = nag_stand
+        dm.config["app_settings"]["nag_eye_strain"] = nag_eyes
+        dm.config["app_settings"]["audio_enabled"] = audio
+
+        dm.save_config()
+        self.app.notify("Settings Saved!")
+        
+        # Update Dashboard Visuals if needed?
+        # Water tracker updates on mount/add usually. Maybe trigger update.
+        try:
+             self.app.dashboard_screen.query_one("#water").update_display()
+        except:
+             pass
+
+        self.app.switch_screen("dashboard")
+

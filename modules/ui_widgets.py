@@ -47,7 +47,9 @@ class TaskListWidget(Static):
 
 class TimerWidget(Static):
     """Pomodoro Timer."""
-    DURATIONS = [25 * 60, 50 * 60, 15 * 60]
+    # 5 min increments to 60
+    DURATIONS = [m * 60 for m in range(5, 65, 5)] 
+    DEFAULT_IDX = 4 # 25 mins (Index 4: 5,10,15,20,25)
     
     def compose(self) -> ComposeResult:
         yield Label("Pomodoro", classes="section-header")
@@ -57,8 +59,8 @@ class TimerWidget(Static):
         yield Label("P: Start/Pause | R: Reset | D: Duration", classes="help-text")
 
     def on_mount(self) -> None:
-        self.duration_idx = 0
-        self.current_duration = self.DURATIONS[0]
+        self.duration_idx = self.DEFAULT_IDX
+        self.current_duration = self.DURATIONS[self.duration_idx]
         self.time_left = self.current_duration
         self.running = False
         
@@ -80,7 +82,8 @@ class TimerWidget(Static):
                  self.running = False
                  self.query_one("#timer-status", Label).update("TIME UP!")
                  self.styles.background = "red" 
-                 # Could trigger system bell or notification
+                 # Terminal Bell
+                 print('\a', end='', flush=True)
     
     def update_display(self) -> None:
         minutes = self.time_left // 60
@@ -160,21 +163,22 @@ class ParkingLotWidget(Static):
             event.input.value = ""
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        # Get text from label inside item
-        # ListItem children[0] is Label
+        # ROBUST METHOD: Use the index of the selected item to find the URL in our data.
+        # This avoids all UI attribute errors.
         try:
-            link_label = event.item.children[0]
-            if isinstance(link_label, Label):
-                # Ensure we get the raw string content
-                url = str(link_label.renderable).strip()
-                if not url.startswith("http"):
-                    url = "https://" + url
-                
-                try:
-                    webbrowser.open(url)
-                    self.notify(f"Opening: {url}")
-                except Exception as e:
-                    self.notify(f"Failed to open link: {e}", severity="error")
+            list_view = self.query_one("#link-list", ListView)
+            if list_view.index is not None:
+                links = self.app.data_manager.get("persistent_data").get("parking_lot_links", [])
+                if 0 <= list_view.index < len(links):
+                    url = links[list_view.index]
+                    if not url.startswith("http"):
+                        url = "https://" + url
+                    
+                    try:
+                        webbrowser.open(url)
+                        self.notify(f"Opening: {url}")
+                    except Exception as e:
+                        self.notify(f"Failed to open link: {e}", severity="error")
         except Exception as e:
              self.notify(f"Error resolving link: {e}", severity="error")
 
@@ -229,16 +233,35 @@ class WaterTrackerWidget(Static):
 
 from modules.weather_api import get_weather_for_city
 import psutil
+import platform
+import datetime
+import time
 
 class WeatherWidget(Static):
-    """Weather display."""
+    """Weather display & Clock."""
     def compose(self) -> ComposeResult:
-        yield Label("Weather", classes="section-header")
+        yield Label("Weather & Time", classes="section-header")
         yield Label("Loading...", id="weather-display")
     
     def on_mount(self) -> None:
         self.update_weather()
+        self.set_interval(1, self.update_clock)
         self.set_interval(1800, self.update_weather) # 30 mins
+
+    def update_clock(self):
+        # We can append time to the weather string or have a separate line
+        # Ideally, we store weather string in a var and re-render.
+        # For now, let's just update the label if we have weather data.
+        now_str = datetime.datetime.now().strftime("%H:%M:%S")
+        try:
+             # This is a bit hacky, overwriting the label constantly. 
+             # Better: Split into two labels?
+             # But compose structure is fixed.
+             # Let's check if we have stored weather text
+             weather = getattr(self, "last_weather", "Loading...")
+             self.query_one("#weather-display", Label).update(f"{now_str}\n{weather}")
+        except:
+             pass
 
     def update_weather(self):
         # Async work ideally, but requests is blocking. 
@@ -272,8 +295,10 @@ class WeatherWidget(Static):
         city = self.app.data_manager.get("user_profile").get("city", "Unknown")
         unit = self.app.data_manager.get("user_profile").get("unit_system", "metric")
         weather_str = get_weather_for_city(city, unit_system=unit)
-        # Update UI from worker
-        self.query_one("#weather-display", Label).update(weather_str)
+        # Store for clock updates
+        self.last_weather = weather_str
+        # Update UI from worker immediately
+        self.update_clock()
 
 
 class SystemVitalsWidget(Static):
@@ -295,5 +320,9 @@ class SystemVitalsWidget(Static):
         disk = psutil.disk_usage('/')
         disk_str = f" | Disk: {disk.percent}%"
 
-        display = f"CPU: {cpu}% | RAM: {ram}%{disk_str}{bat_str}"
+        # OS Info
+        os_info = f"{platform.system()} {platform.release()}"
+        uptime = datetime.timedelta(seconds=int(time.time() - psutil.boot_time()))
+        
+        display = f"CPU: {cpu}% | RAM: {ram}%{disk_str}{bat_str}\n{os_info} | Up: {uptime}"
         self.query_one("#vitals-display", Label).update(display)

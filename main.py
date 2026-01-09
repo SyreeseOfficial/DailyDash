@@ -3,7 +3,7 @@ from textual.widgets import Label, Header, Footer, Placeholder
 from textual.screen import Screen
 
 from modules.data_handler import DataManager
-from modules.onboarding import SetupWizard, DailyWizard
+from modules.onboarding import SetupWizard, DailyWizard, SettingsScreen
 from modules.audio_manager import AudioManager
 import time
 from modules.ui_widgets import (
@@ -87,8 +87,8 @@ class DailyDashApp(App):
             pass
 
     def action_open_settings(self):
-        # Re-run setup wizard as settings
-        self.switch_screen(SetupWizard())
+        # Open the new settings screen
+        self.switch_screen(SettingsScreen())
 
     def action_add_water(self):
         try:
