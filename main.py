@@ -52,6 +52,7 @@ def command_status(args, show_hints=True):
     """
     # 1. Header Info
     user_profile = data_manager.get("user_profile", {})
+    name = user_profile.get("name", "User")
     city = user_profile.get("city", "Unknown")
     units = user_profile.get("unit_system", "metric")
     weather_info = get_weather_for_city(city, units)
@@ -70,12 +71,19 @@ def command_status(args, show_hints=True):
 
     # --- UI Construction ---
     current_time = time.strftime('%H:%M')
-    table = Table(title=f"DailyDash Status - [bold yellow]{current_time}[/]", box=box.ROUNDED, expand=True)
+    
+    # Greeting
+    console.print(f"Hi {name}!", style="bold magenta")
+    
+    table = Table(title=f"DailyDash - [bold yellow]{current_time}[/]", box=box.ROUNDED, expand=True)
     table.add_column("Section", style="cyan", no_wrap=True)
     table.add_column("Content", style="white")
 
-    # Weather & System
-    table.add_row("Environment", f"{weather_info}\n[dim]{vitals}[/dim]")
+    # Weather
+    table.add_row("Weather", weather_info)
+    
+    # System
+    table.add_row("System", f"[dim]{vitals}[/dim]")
     
     # Tasks
     task_str = ""
@@ -85,22 +93,21 @@ def command_status(args, show_hints=True):
         task_str += f"{icon} {txt}\n"
     table.add_row("Big 3 Tasks", task_str.strip())
     
-    # Water
+    # Water (Refined Title)
     water_percent = min(100, int((water / goal) * 100))
     water_color = "blue" if water_percent < 100 else "green"
-    table.add_row("Hydration", f"[{water_color}]{water}ml[/] / {goal}ml ({water_percent}%)")
+    table.add_row("Water", f"[{water_color}]{water}ml[/] / {goal}ml ({water_percent}%)")
 
-    # Notes (Brain Dump)
-    note_preview = notes.strip() if notes else "[dim]No notes[/dim]"
-    if len(note_preview) > 100: note_preview = note_preview[:97] + "..."
-    table.add_row("Brain Dump", note_preview)
+    # Notes (Full Content)
+    note_content = notes.strip() if notes else "[dim]No notes[/dim]"
+    table.add_row("Brain Dump", note_content)
 
-    # Links (Parking Lot)
+    # Links (Refined Title)
     link_str = ""
     for i, link in enumerate(links):
         link_str += f"{i+1}. [link={link}]{link}[/link]\n"
     link_str = link_str.strip() if link_str else "[dim]No links[/dim]"
-    table.add_row("Parking Lot", link_str)
+    table.add_row("Saved URLs", link_str)
 
     console.print(table)
     
@@ -151,6 +158,9 @@ def command_setup(args):
     """Interactive setup wizard."""
     console.print("[bold green]Welcome to DailyDash Setup[/bold green]")
     
+    # 0. Name
+    name = Prompt.ask("What is your Name?", default="User")
+
     # 1. Units
     is_metric = Confirm.ask("Use Metric units? (Celsius, ml)", default=True)
     unit_system = "metric" if is_metric else "imperial"
@@ -167,6 +177,7 @@ def command_setup(args):
     goal = IntPrompt.ask("Enter Daily Water Goal", default=default_goal)
 
     # Save
+    data_manager.config["user_profile"]["name"] = name
     data_manager.config["user_profile"]["unit_system"] = unit_system
     data_manager.config["user_profile"]["city"] = city
     data_manager.config["user_profile"]["container_size"] = container
@@ -387,7 +398,7 @@ def interactive_mode():
             console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
             console.print("[dim]w: Water | t: Task | c: Timer | b: Brain Dump | p: Parking Lot | m: Menu | q: Quit[/dim]")
             
-            choice = Prompt.ask("Command", choices=["w", "t", "c", "b", "p", "m", "q"], default="q")
+            choice = Prompt.ask("Command", choices=["w", "t", "c", "b", "p", "m", "q"], default="q", show_choices=False, show_default=False)
             
             if choice == "q":
                 console.print("Bye!")
