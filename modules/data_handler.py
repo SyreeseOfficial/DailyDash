@@ -17,6 +17,7 @@ class DataManager:
             "audio_enabled": True,
             "nag_stand_up": True,
             "nag_eye_strain": True,
+            "eod_journal_enabled": False,
             "history_logging": True
         },
         "daily_state": {
@@ -110,23 +111,74 @@ class DataManager:
         
         self.save_config()
 
-    def log_daily_history(self):
-        """Appends daily stats to daily_history.csv"""
+    def log_daily_history(self, note=None):
+        """Appends or updates daily stats to daily_history.csv"""
+        import csv
+        
         today_str = date.today().isoformat()
         daily = self.config.get("daily_state", {})
         water = daily.get("current_water_intake", 0)
         caffeine = daily.get("current_caffeine_intake", 0)
-        
         tasks_done = sum(1 for t in daily.get("tasks", []) if t["done"])
         
         log_file = "daily_history.csv"
-        # Check if header needed
-        need_header = not os.path.exists(log_file)
+        file_exists = os.path.exists(log_file)
         
-        with open(log_file, "a") as f:
-            if need_header:
-                f.write("Date,Water_ml,Caffeine_mg,Tasks_Completed\n")
-            f.write(f"{today_str},{water},{caffeine},{tasks_done}\n")
+        rows = []
+        header = ["Date", "Water_ml", "Caffeine_mg", "Tasks_Completed", "Daily_Note"]
+        
+        if file_exists:
+            try:
+                with open(log_file, "r", newline='') as f:
+                    reader = csv.DictReader(f)
+                    # Use existing fieldnames if available, otherwise default
+                    file_fieldnames = reader.fieldnames if reader.fieldnames else header
+                    # Ensure Daily_Note is in fieldnames for writing later
+                    if "Daily_Note" not in file_fieldnames:
+                         file_fieldnames.append("Daily_Note")
+                    
+                    rows = list(reader)
+            except IOError:
+                # If read fails, safely assume we overwrite/start fresh or handle error
+                # For now, let's just proceed with empty rows if corrupted
+                pass
+        
+        # Check if today's entry exists
+        updated = False
+        for row in rows:
+            if row.get("Date") == today_str:
+                row["Water_ml"] = water
+                row["Caffeine_mg"] = caffeine
+                row["Tasks_Completed"] = tasks_done
+                if note is not None:
+                     row["Daily_Note"] = note
+                elif "Daily_Note" not in row:
+                     row["Daily_Note"] = ""
+                updated = True
+                break
+        
+        if not updated:
+            new_row = {
+                "Date": today_str,
+                "Water_ml": water,
+                "Caffeine_mg": caffeine,
+                "Tasks_Completed": tasks_done,
+                "Daily_Note": note if note else ""
+            }
+            rows.append(new_row)
+            
+        # Write back
+        try:
+            with open(log_file, "w", newline='') as f:
+                # Use the header we defined to ensure consistent order
+                writer = csv.DictWriter(f, fieldnames=header)
+                writer.writeheader()
+                for row in rows:
+                    # Filter row to only include known keys
+                    filtered_row = {k: row.get(k, "") for k in header}
+                    writer.writerow(filtered_row)
+        except IOError as e:
+            print(f"Error logging history: {e}")
 
     def undo_water_intake(self):
         """Undo the last added container of water, min 0."""

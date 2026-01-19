@@ -314,7 +314,13 @@ def command_setup(args):
     # 6. Logging
     history_logging = Confirm.ask("Log daily history to CSV?", default=True)
 
-    # 7. Habits (New)
+    # 7. Eye Strain Reminder
+    eye_strain = Confirm.ask("Enable Eye Strain Reminder (every 20m)?", default=True)
+
+    # 8. EOD Journal
+    eod_journal = Confirm.ask("Enable End of Day Journal?", default=False)
+    
+    # 9. Habits (New)
     habits = []
     if Confirm.ask("Do you want to track daily habits (0-3)? (Optional)", default=True):
         for i in range(3):
@@ -332,6 +338,8 @@ def command_setup(args):
     data_manager.config["user_profile"]["daily_water_goal"] = goal
     data_manager.config["user_profile"]["caffeine_size"] = caffeine_size
     data_manager.config["app_settings"]["history_logging"] = history_logging
+    data_manager.config["app_settings"]["nag_eye_strain"] = eye_strain
+    data_manager.config["app_settings"]["eod_journal_enabled"] = eod_journal
     
     # Save habits
     data_manager.config["persistent_data"]["habits"] = habits
@@ -603,6 +611,23 @@ def cls():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def shutdown_sequence():
+    # Helper to capture EOD note if enabled
+    settings = data_manager.get("app_settings", {})
+    if settings.get("eod_journal_enabled", False):
+        cls()
+        console.print(Align.center("\n[bold yellow]End of Day Journal[/bold yellow]"))
+        console.print(Align.center("[italic]How was your day? What did you accomplish?[/italic]"))
+        
+        note = Prompt.ask("\nQuick Note (Enter to skip)", default="")
+        if note.strip():
+            # Log with note
+            data_manager.log_daily_history(note=note.strip())
+            console.print("[green]Note saved.[/green]")
+            time.sleep(1.0)
+        else:
+            # Still update stats on exit even if no note
+            data_manager.log_daily_history()
+
     cls()
     console.print(Align.center("\n\n[bold cyan]DailyDash[/bold cyan]"))
     
@@ -611,7 +636,8 @@ def shutdown_sequence():
         "Stay hard.",
         "Focus is the key.",
         "Rest well.",
-        "You crushed it today."
+        "You crushed it today.",
+        "1% better every day."
     ]
     msg = random.choice(msgs)
     console.print(Align.center(f"[italic]{msg}[/italic]\n\n"))
@@ -738,8 +764,8 @@ def menu_parking_lot():
         args = argparse.Namespace(action="list")
         command_link(args)
         
-        console.print("\n[dim]a: Add | d: Delete | o: Open | b: Back[/dim]")
-        choice = Prompt.ask("Action", choices=["a", "d", "o", "b"], default="b")
+        console.print("\n[dim]a: Add | d: Delete | x: Clear All | o: Open | b: Back[/dim]")
+        choice = Prompt.ask("Action", choices=["a", "d", "x", "o", "b"], default="b")
         
         if choice == "b":
             break
@@ -756,6 +782,14 @@ def menu_parking_lot():
             args = argparse.Namespace(action="delete", target_id=str(target))
             command_link(args)
             time.sleep(1.5)
+
+        elif choice == "x":
+            # Clear All
+            if Confirm.ask("Are you sure you want to DELETE ALL saved links?", default=False):
+                data_manager.config["persistent_data"]["parking_lot_links"] = []
+                data_manager.save_config()
+                console.print("[green]All links cleared.[/green]")
+                time.sleep(1.5)
 
         elif choice == "o":
             target = IntPrompt.ask("Link ID to open")
@@ -803,14 +837,13 @@ def menu_more_settings():
         console.print("[bold cyan]More Settings[/bold cyan]")
         console.print("1. Remove Water (Undo)")
         console.print("2. Clear Water Intake (Reset)")
-        console.print("3. Clear Brain Dump")
-        console.print("4. Clear Parking Lot")
-        console.print("5. Run Initial Setup")
-        console.print("6. Toggle History Logging")
-        console.print("7. Set Caffeine Size")
+        console.print("3. Run Initial Setup")
+        console.print("4. Toggle History Logging")
+        console.print("5. Toggle Eye Strain Reminder")
+        console.print("6. Toggle EOD Journal")
         console.print("b. Back")
         
-        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "7", "b"], default="b")
+        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "b"], default="b")
         
         if choice == "b":
             break
@@ -830,25 +863,10 @@ def menu_more_settings():
                 time.sleep(1.5)
                 
         elif choice == "3":
-            # Clear Notes
-            if Confirm.ask("Clear all notes?"):
-                args = argparse.Namespace(action="clear")
-                command_note(args)
-                time.sleep(1.5)
-                
-        elif choice == "4":
-            # Clear Parking Lot
-            if Confirm.ask("Delete ALL saved links?"):
-                data_manager.config["persistent_data"]["parking_lot_links"] = []
-                data_manager.save_config()
-                console.print("[green]Parking lot cleared.[/green]")
-                time.sleep(1.5)
-
-        elif choice == "5":
             command_setup(None)
             input("\nPress Enter to return...")
 
-        elif choice == "6":
+        elif choice == "4":
             curr = data_manager.get("app_settings", {}).get("history_logging", True)
             new_val = not curr
             data_manager.config["app_settings"]["history_logging"] = new_val
@@ -857,13 +875,22 @@ def menu_more_settings():
             console.print(f"[green]History Logging is now {status}[/green]")
             time.sleep(1.5)
 
-        elif choice == "7":
-            curr = data_manager.get("user_profile", {}).get("caffeine_size", 50)
-            console.print(f"Current Size: {curr}mg")
-            new_val = IntPrompt.ask("New Caffeine Size (mg)", default=curr)
-            data_manager.config["user_profile"]["caffeine_size"] = new_val
+        elif choice == "5":
+            curr = data_manager.get("app_settings", {}).get("nag_eye_strain", True)
+            new_val = not curr
+            data_manager.config["app_settings"]["nag_eye_strain"] = new_val
             data_manager.save_config()
-            console.print(f"[green]Caffeine size updated to {new_val}mg[/green]")
+            status = "ON" if new_val else "OFF"
+            console.print(f"[green]Eye Strain Reminder is now {status}[/green]")
+            time.sleep(1.5)
+
+        elif choice == "6":
+            curr = data_manager.get("app_settings", {}).get("eod_journal_enabled", False)
+            new_val = not curr
+            data_manager.config["app_settings"]["eod_journal_enabled"] = new_val
+            data_manager.save_config()
+            status = "ON" if new_val else "OFF"
+            console.print(f"[green]EOD Journal is now {status}[/green]")
             time.sleep(1.5)
 
 def command_habit(args):
