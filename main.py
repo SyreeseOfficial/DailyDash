@@ -358,6 +358,11 @@ def command_setup(args):
             else:
                 break
 
+    # 11. Day Reset Time
+    reset_hour = IntPrompt.ask("Day Reset Hour (0-23) [0=Midnight, 4=4AM]", default=0)
+    if not (0 <= reset_hour <= 23):
+        reset_hour = 0
+
     # Save
     data_manager.config["user_profile"]["name"] = name
     data_manager.config["user_profile"]["unit_system"] = unit_system
@@ -365,6 +370,7 @@ def command_setup(args):
     data_manager.config["user_profile"]["container_size"] = container
     data_manager.config["user_profile"]["daily_water_goal"] = goal
     data_manager.config["user_profile"]["caffeine_size"] = caffeine_size
+    data_manager.config["user_profile"]["day_reset_hour"] = reset_hour
     data_manager.config["app_settings"]["history_logging"] = history_logging
     data_manager.config["app_settings"]["nag_eye_strain"] = eye_strain
     data_manager.config["app_settings"]["eod_journal_enabled"] = eod_journal

@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 CONFIG_PATH = "config.json"
 
@@ -11,7 +11,8 @@ class DataManager:
             "unit_system": "metric",  # Default to metric
             "container_size": 250, # Default 250ml
             "daily_water_goal": 2000,
-            "caffeine_size": 50 # Default 50mg
+            "caffeine_size": 50, # Default 50mg
+            "day_reset_hour": 0 # Default midnight
         },
         "app_settings": {
             "audio_enabled": True,
@@ -85,9 +86,20 @@ class DataManager:
         except IOError as e:
             print(f"Error saving config: {e}")
 
+    def _get_effective_date(self):
+        """Calculates the effective date based on reset hour."""
+        reset_hour = self.config.get("user_profile", {}).get("day_reset_hour", 0)
+        now = datetime.now()
+        # If current hour < reset hour, we are still in 'yesterday'
+        if now.hour < reset_hour:
+             effective_now = now - timedelta(days=1)
+             return effective_now.date().isoformat()
+        return now.date().isoformat()
+
     def is_new_day(self):
-        """Returns True if today is different from last login date."""
-        today_str = date.today().isoformat()
+        """Returns True if today (effective) is different from last login date."""
+        # Using effective date
+        today_str = self._get_effective_date()
         last_login = self.config["daily_state"].get("last_login_date", "")
         return last_login != today_str
 
@@ -97,7 +109,7 @@ class DataManager:
 
     def confirm_new_day(self):
         """Commit the new day reset logic to config."""
-        today_str = date.today().isoformat()
+        today_str = self._get_effective_date()
         
         self.config["daily_state"]["last_login_date"] = today_str
         self.config["daily_state"]["current_water_intake"] = 0
