@@ -39,16 +39,31 @@ audio_manager = AudioManager()
 def get_system_vitals():
     cpu = psutil.cpu_percent(interval=0.1)
     mem = psutil.virtual_memory().percent
+    disk = psutil.disk_usage('/').percent
     batt = psutil.sensors_battery()
     batt_str = f"{batt.percent}%" if batt else "AC"
-    return f"CPU: {cpu}% | RAM: {mem}% | PWR: {batt_str}"
+    return f"CPU: {cpu}% | RAM: {mem}% | Disk: {disk}% | PWR: {batt_str}"
+
+import random
+
+QUOTES = [
+    "The secret of getting ahead is getting started.",
+    "It always seems impossible until it's done.",
+    "Don't watch the clock; do what it does. Keep going.",
+    "The future depends on what you do today.",
+    "Focus on being productive instead of busy.",
+    "Small steps in the right direction can turn out to be the biggest step of your life.",
+    "Discipline is choosing between what you want now and what you want most."
+]
 
 def command_status(args, show_hints=True):
     """
     Displays the 'Head-Up Display' summary:
-    - Weather & Vitals
+    - Weather & System
     - Big 3 Tasks
-    - Water Intake
+    - Health (Water + Coffee)
+    - Brain Dump
+    - Saved URLs
     """
     # 1. Header Info
     user_profile = data_manager.get("user_profile", {})
@@ -62,6 +77,7 @@ def command_status(args, show_hints=True):
     daily_state = data_manager.get("daily_state", {})
     tasks = daily_state.get("tasks", [])
     water = daily_state.get("current_water_intake", 0)
+    caffeine = daily_state.get("current_caffeine_intake", 0)
     goal = user_profile.get("daily_water_goal", 2000)
     
     # 3. Persistent Data
@@ -71,11 +87,17 @@ def command_status(args, show_hints=True):
 
     # --- UI Construction ---
     current_time = time.strftime('%H:%M')
+    current_date = time.strftime('%a %b %d')
     
-    # Greeting
-    console.print(f"Hi {name}!", style="bold magenta")
+    # 1. Header Grid
+    header = Table.grid(expand=True)
+    header.add_column(justify="left", style="bold magenta")
+    header.add_column(justify="right", style="bold yellow")
+    header.add_row(f"Hi {name}!", f"DailyDash - {current_date} {current_time}")
+    console.print(header)
     
-    table = Table(title=f"DailyDash - [bold yellow]{current_time}[/]", box=box.ROUNDED, expand=True)
+    # 2. Main Table (No Title)
+    table = Table(box=box.ROUNDED, expand=True, padding=(1, 1))
     table.add_column("Section", style="cyan", no_wrap=True)
     table.add_column("Content", style="white")
 
@@ -93,10 +115,17 @@ def command_status(args, show_hints=True):
         task_str += f"{icon} {txt}\n"
     table.add_row("Big 3 Tasks", task_str.strip())
     
-    # Water (Refined Title)
+    # Health (Water + Caffeine on same line)
     water_percent = min(100, int((water / goal) * 100))
     water_color = "blue" if water_percent < 100 else "green"
-    table.add_row("Water", f"[{water_color}]{water}ml[/] / {goal}ml ({water_percent}%)")
+    
+    health_str = f"💧 [{water_color}]{water}ml[/] / {goal}ml ({water_percent}%)"
+    if caffeine > 0:
+         health_str += f"  |  ☕ [yellow]{caffeine}mg[/yellow]"
+    else:
+         health_str += f"  |  ☕ [dim]{caffeine}mg[/dim]"
+    
+    table.add_row("Health", health_str)
 
     # Notes (Full Content)
     note_content = notes.strip() if notes else "[dim]No notes[/dim]"
@@ -111,12 +140,150 @@ def command_status(args, show_hints=True):
 
     console.print(table)
     
+    # 3. Quote (Bottom)
+    quote = random.choice(QUOTES)
+    console.print(Align.center(f"[italic dim]\"{quote}\"[/italic dim]"), style="italic cyan")
+    # Removed explicit spacer to reduce gap
+
     # Tooltips / Usage Footer
     if show_hints:
         tips = """[dim]Try these commands:[/dim]
-[cyan]task add "Todo"[/cyan]  |  [cyan]water add[/cyan]  |  [cyan]timer 25[/cyan]  |  [cyan]note add "Idea"[/cyan]
+[cyan]task add "Todo"[/cyan]  |  [cyan]water add[/cyan]  |  [cyan]coffee add[/cyan]  |  [cyan]timer 25[/cyan]
 [dim]Run 'python main.py help' for a full guide.[/dim]"""
         console.print(Align.center(tips))
+
+# ... (Previous commands remain, adding new ones below)
+
+def command_coffee(args):
+    action = args.action
+    caffeine_size = data_manager.get("user_profile", {}).get("caffeine_size", 50)
+    
+    if action == "add":
+        current = data_manager.config["daily_state"].get("current_caffeine_intake", 0)
+        new_val = current + caffeine_size
+        data_manager.config["daily_state"]["current_caffeine_intake"] = new_val
+        data_manager.save_config()
+        console.print(f"[yellow]Coffee time![/yellow] Added {caffeine_size}mg. Total: {new_val}mg")
+        
+    elif action == "undo":
+        current = data_manager.config["daily_state"].get("current_caffeine_intake", 0)
+        new_val = max(0, current - caffeine_size)
+        data_manager.config["daily_state"]["current_caffeine_intake"] = new_val
+        data_manager.save_config()
+        console.print(f"[yellow]Undid coffee.[/yellow] Total: {new_val}mg")
+
+def command_end_day(args):
+    """
+    Logs history and resets daily state.
+    """
+    if Confirm.ask("[bold red]End Day & Reset?[/bold red] This will save stats and clear daily progress."):
+        # Check setting
+        logging_enabled = data_manager.get("app_settings", {}).get("history_logging", True)
+        if logging_enabled:
+            data_manager.log_daily_history()
+            console.print("[dim]History logged to CSV.[/dim]")
+            
+        data_manager.confirm_new_day()
+        console.print("[green]Day reset. Good job today![/green]")
+        time.sleep(2.0)
+
+# ... (Existing interactive_mode and main dispatcher updates)
+
+def interactive_mode():
+    """
+    Main interactive loop.
+    """
+    while True:
+        try:
+            cls()
+            # Show Dashboard
+            command_status(None, show_hints=False)
+            
+            # Interactive Prompt
+            console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
+            console.print("[dim]w: Water | k: Coffee | t: Task | c: Timer | b: Brain Dump | p: Saved URLs | e: End Day | m: Menu | q: Quit[/dim]") # Added k and e
+            
+            choice = Prompt.ask("Command", choices=["w", "k", "t", "c", "b", "p", "e", "m", "q"], default="q", show_choices=False, show_default=False)
+            
+            if choice == "q":
+                console.print("Bye!")
+                break
+                
+            elif choice == "w":
+                # Add Water (default amount)
+                args = argparse.Namespace(action="add")
+                command_water(args)
+                time.sleep(1.0) # Faster
+                
+            elif choice == "k":
+                # Coffee
+                args = argparse.Namespace(action="add")
+                command_coffee(args)
+                time.sleep(1.0)
+                
+            elif choice == "e":
+                # End Day
+                command_end_day(None)
+                
+            elif choice == "t":
+                # Task Menu
+                menu_task()
+            
+            elif choice == "c":
+                # Timer
+                mins = IntPrompt.ask("Duration (minutes)", default=25)
+                args = argparse.Namespace(duration=mins)
+                command_timer(args)
+                input("\nPress Enter to return...")
+                
+            elif choice == "b":
+                # Brain Dump
+                text = Prompt.ask("Quick Note")
+                if text:
+                    args = argparse.Namespace(action="add", text=[text])
+                    command_note(args)
+                    time.sleep(1.0)
+            
+            elif choice == "p":
+                menu_parking_lot()
+            
+            elif choice == "m":
+                menu_more_settings()
+                
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Exiting Interactive Mode...[/yellow]")
+            break
+
+def main():
+    parser = argparse.ArgumentParser(description="DailyDash CLI")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # ... (Add coffee parser)
+    
+    # COFFEE Subcommand
+    coffee_parser = subparsers.add_parser("coffee", help="Track caffeine")
+    coffee_sub = coffee_parser.add_subparsers(dest="action", required=True)
+    coffee_sub.add_parser("add", help="Add cup (95mg)")
+    coffee_sub.add_parser("undo", help="Remove cup")
+    
+    # END DAY Subcommand
+    subparsers.add_parser("end", help="End day and log stats")
+
+    # ... (Rest of parsers)
+
+    if len(sys.argv) == 1:
+        interactive_mode()
+        return
+
+    args = parser.parse_args()
+
+    # Dispatcher
+    if args.command == "coffee":
+        command_coffee(args)
+    elif args.command == "end":
+        command_end_day(args)
+    # ... (Rest of dispatcher)
+
 
 def command_help(args):
     """Display a rich help guide."""
@@ -176,12 +343,22 @@ def command_setup(args):
     default_goal = 2000 if is_metric else 64
     goal = IntPrompt.ask("Enter Daily Water Goal", default=default_goal)
 
+    # 5. Caffeine Size
+    console.print("[dim]Note: 50mg is roughly a standard cup of coffee.[/dim]")
+    caffeine_size = IntPrompt.ask("Caffeine Cup Size (mg)", default=50)
+
+    # 6. Logging
+    history_logging = Confirm.ask("Log daily history to CSV?", default=True)
+
     # Save
     data_manager.config["user_profile"]["name"] = name
     data_manager.config["user_profile"]["unit_system"] = unit_system
     data_manager.config["user_profile"]["city"] = city
     data_manager.config["user_profile"]["container_size"] = container
     data_manager.config["user_profile"]["daily_water_goal"] = goal
+    data_manager.config["user_profile"]["caffeine_size"] = caffeine_size
+    data_manager.config["app_settings"]["history_logging"] = history_logging
+    
     data_manager.config["setup_complete"] = True
     
     data_manager.save_config()
@@ -395,10 +572,10 @@ def interactive_mode():
             command_status(None, show_hints=False)
             
             # Interactive Prompt
-            console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
-            console.print("[dim]w: Water | t: Task | c: Timer | b: Brain Dump | p: Parking Lot | m: Menu | q: Quit[/dim]")
+            console.print("[bold cyan]Interactive Menu[/bold cyan]")
+            console.print("[dim]w: Water | k: Coffee | t: Task | c: Timer | b: Brain Dump | p: Saved URLs | e: End Day | m: Menu | q: Quit[/dim]")
             
-            choice = Prompt.ask("Command", choices=["w", "t", "c", "b", "p", "m", "q"], default="q", show_choices=False, show_default=False)
+            choice = Prompt.ask("Command", choices=["w", "k", "t", "c", "b", "p", "e", "m", "q"], default="q", show_choices=False, show_default=False)
             
             if choice == "q":
                 console.print("Bye!")
@@ -408,15 +585,21 @@ def interactive_mode():
                 # Add Water (default amount)
                 args = argparse.Namespace(action="add")
                 command_water(args)
-                time.sleep(1.5)
+                time.sleep(1.0)
+                
+            elif choice == "k":
+                # Coffee
+                args = argparse.Namespace(action="add")
+                command_coffee(args)
+                time.sleep(1.0)
+                
+            elif choice == "e":
+                # End Day
+                command_end_day(None)
                 
             elif choice == "t":
-                # Add Task
-                text = Prompt.ask("Task Description")
-                if text:
-                    args = argparse.Namespace(action="add", text=[text])
-                    command_task(args)
-                    time.sleep(1.5)
+                # Task Menu
+                menu_task()
             
             elif choice == "c":
                 # Timer
@@ -431,7 +614,7 @@ def interactive_mode():
                 if text:
                     args = argparse.Namespace(action="add", text=[text])
                     command_note(args)
-                    time.sleep(1.5)
+                    time.sleep(1.0)
             
             elif choice == "p":
                 menu_parking_lot()
@@ -442,6 +625,45 @@ def interactive_mode():
         except KeyboardInterrupt:
             console.print("\n[yellow]Exiting Interactive Mode...[/yellow]")
             break
+
+def menu_task():
+    while True:
+        cls()
+        console.print("[bold magenta]Task Management[/bold magenta]")
+        # Show list
+        args = argparse.Namespace(action="list")
+        command_task(args)
+        
+        console.print("\n[dim]a: Add | d: Delete | c: Clear All | b: Back[/dim]")
+        choice = Prompt.ask("Action", choices=["a", "d", "c", "b"], default="b", show_choices=False, show_default=False)
+        
+        if choice == "b":
+            break
+            
+        elif choice == "a":
+            text = Prompt.ask("Task Description")
+            if text:
+                args = argparse.Namespace(action="add", text=[text])
+                command_task(args)
+                time.sleep(1.0)
+                
+        elif choice == "d":
+            target = IntPrompt.ask("Task ID to delete")
+            args = argparse.Namespace(action="delete", target_id=str(target))
+            command_task(args)
+            time.sleep(1.0)
+
+        elif choice == "c":
+            if Confirm.ask("Clear ALL tasks?"):
+                # Manual clear logic
+                data_manager.config["daily_state"]["tasks"] = [
+                    {"id": 1, "text": "", "done": False},
+                    {"id": 2, "text": "", "done": False},
+                    {"id": 3, "text": "", "done": False}
+                ]
+                data_manager.save_config()
+                console.print("[green]All tasks cleared.[/green]")
+                time.sleep(1.0)
 
 def menu_parking_lot():
     while True:
@@ -485,9 +707,11 @@ def menu_more_settings():
         console.print("3. Clear Brain Dump")
         console.print("4. Clear Parking Lot")
         console.print("5. Run Initial Setup")
+        console.print("6. Toggle History Logging")
+        console.print("7. Set Caffeine Size")
         console.print("b. Back")
         
-        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "b"], default="b")
+        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "7", "b"], default="b")
         
         if choice == "b":
             break
@@ -524,6 +748,24 @@ def menu_more_settings():
         elif choice == "5":
             command_setup(None)
             input("\nPress Enter to return...")
+
+        elif choice == "6":
+            curr = data_manager.get("app_settings", {}).get("history_logging", True)
+            new_val = not curr
+            data_manager.config["app_settings"]["history_logging"] = new_val
+            data_manager.save_config()
+            status = "ON" if new_val else "OFF"
+            console.print(f"[green]History Logging is now {status}[/green]")
+            time.sleep(1.5)
+
+        elif choice == "7":
+            curr = data_manager.get("user_profile", {}).get("caffeine_size", 50)
+            console.print(f"Current Size: {curr}mg")
+            new_val = IntPrompt.ask("New Caffeine Size (mg)", default=curr)
+            data_manager.config["user_profile"]["caffeine_size"] = new_val
+            data_manager.save_config()
+            console.print(f"[green]Caffeine size updated to {new_val}mg[/green]")
+            time.sleep(1.5)
 
 
 def main():

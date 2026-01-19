@@ -1,12 +1,30 @@
 import requests
+import time
+
+# Cache Globals
+_weather_cache = {
+    "city": None,
+    "unit_system": None,
+    "data": None,
+    "timestamp": 0
+}
 
 def get_weather_for_city(city_name, unit_system="metric"):
     """
     Fetches current weather for a city name using OpenMeteo.
     Returns a formatted string or error message.
+    Uses usage-based caching (15 min).
     """
     if not city_name or city_name == "Unknown":
         return "No City Configured"
+
+    # Check Cache
+    current_time = time.time()
+    if (_weather_cache["city"] == city_name and 
+        _weather_cache["unit_system"] == unit_system and 
+        _weather_cache["data"] is not None and 
+        (current_time - _weather_cache["timestamp"] < 900)): # 15 min = 900 sec
+        return _weather_cache["data"]
 
     try:
         # 1. Geocode
@@ -35,14 +53,8 @@ def get_weather_for_city(city_name, unit_system="metric"):
             wind = cw["windspeed"]
             
             # Approximate humidity from hourly (current hour)
-            # This is a simplification; ideally we match timestamps
             hum = "N/A"
             if "hourly" in w_data and "relative_humidity_2m" in w_data["hourly"]:
-                 # Just take the first one or middle one for now? 
-                 # Usually hourly returns 24h+ list. We need current time index.
-                 # Let's just grab the one at index 0 (midnight) or nearest?
-                 # Improved: Just grab the first one for simplicity or use current_weather params if they added it (they haven't).
-                 # Better: Use the first value as "Today's Humidity"
                  hum = w_data["hourly"]["relative_humidity_2m"][0]
 
             # Simple condition mapping
@@ -55,7 +67,15 @@ def get_weather_for_city(city_name, unit_system="metric"):
             unit_ci = "F" if unit_system == "imperial" else "C"
             unit_sp = "mph" if unit_system == "imperial" else "km/h"
             
-            return f"{city_name}: {icon} {temp}°{unit_ci} | 💧 {hum}% | 💨 {wind}{unit_sp}"
+            result = f"{city_name}: {icon} {temp}°{unit_ci} | 💧 {hum}% | 💨 {wind}{unit_sp}"
+            
+            # Update Cache
+            _weather_cache["city"] = city_name
+            _weather_cache["unit_system"] = unit_system
+            _weather_cache["data"] = result
+            _weather_cache["timestamp"] = current_time
+            
+            return result
         
         return "Weather Unavailable"
 

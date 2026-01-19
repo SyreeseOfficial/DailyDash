@@ -10,12 +10,14 @@ class DataManager:
             "city": "",
             "unit_system": "metric",  # Default to metric
             "container_size": 250, # Default 250ml
-            "daily_water_goal": 2000
+            "daily_water_goal": 2000,
+            "caffeine_size": 50 # Default 50mg
         },
         "app_settings": {
             "audio_enabled": True,
             "nag_stand_up": True,
-            "nag_eye_strain": True
+            "nag_eye_strain": True,
+            "history_logging": True
         },
         "daily_state": {
             "last_login_date": "",
@@ -79,6 +81,7 @@ class DataManager:
         
         self.config["daily_state"]["last_login_date"] = today_str
         self.config["daily_state"]["current_water_intake"] = 0
+        self.config["daily_state"]["current_caffeine_intake"] = 0 # Reset Caffeine
         self.config["daily_state"]["tasks"] = [
             {"id": 1, "text": "", "done": False},
             {"id": 2, "text": "", "done": False},
@@ -88,6 +91,24 @@ class DataManager:
         self.config["daily_state"]["habit_streak"]["no_sugar"] = False
         
         self.save_config()
+
+    def log_daily_history(self):
+        """Appends daily stats to daily_history.csv"""
+        today_str = date.today().isoformat()
+        daily = self.config.get("daily_state", {})
+        water = daily.get("current_water_intake", 0)
+        caffeine = daily.get("current_caffeine_intake", 0)
+        
+        tasks_done = sum(1 for t in daily.get("tasks", []) if t["done"])
+        
+        log_file = "daily_history.csv"
+        # Check if header needed
+        need_header = not os.path.exists(log_file)
+        
+        with open(log_file, "a") as f:
+            if need_header:
+                f.write("Date,Water_ml,Caffeine_mg,Tasks_Completed\n")
+            f.write(f"{today_str},{water},{caffeine},{tasks_done}\n")
 
     def undo_water_intake(self):
         """Undo the last added container of water, min 0."""
