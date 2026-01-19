@@ -695,7 +695,7 @@ def interactive_mode():
             command_status(None, show_hints=False)
             
             # Interactive Prompt
-            console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
+            console.print(f"\n[{T['primary']}]Interactive Menu[/{T['primary']}]")
             console.print("[dim]w: Water | c: Coffee | t: Task | k: Timer | b: Brain Dump | s: Saved URLs | h: Habits | v: Clipboard | e: End Day | m: Menu | q: Quit[/dim]")
 
             choice = Prompt.ask("Command", choices=["w", "c", "t", "k", "b", "s", "h", "v", "e", "m", "q"], default="q", show_choices=False, show_default=False)
@@ -755,7 +755,7 @@ def interactive_mode():
 def menu_task():
     while True:
         cls()
-        console.print("[bold magenta]Task Management[/bold magenta]")
+        console.print(f"[{T['primary']}]Task Management[/{T['primary']}]")
         # Show list
         args = argparse.Namespace(action="list")
         command_task(args)
@@ -803,7 +803,7 @@ def menu_task():
 def menu_parking_lot():
     while True:
         cls()
-        console.print("[bold magenta]Parking Lot Management[/bold magenta]")
+        console.print(f"[{T['primary']}]Parking Lot Management[/{T['primary']}]")
         # Show list
         args = argparse.Namespace(action="list")
         command_link(args)
@@ -844,7 +844,7 @@ def menu_parking_lot():
 def menu_note():
     while True:
         cls()
-        console.print("[bold magenta]Brain Dump (Notes)[/bold magenta]")
+        console.print(f"[{T['primary']}]Brain Dump (Notes)[/{T['primary']}]")
         # Show list
         args = argparse.Namespace(action="show")
         command_note(args)
@@ -878,7 +878,7 @@ def menu_note():
 def menu_more_settings():
     while True:
         cls()
-        console.print("[bold cyan]More Settings[/bold cyan]")
+        console.print(f"[{T['primary']}]More Settings[/{T['primary']}]")
         console.print("1. Remove Water (Undo)")
         console.print("2. Clear Water Intake (Reset)")
         console.print("3. Run Initial Setup")
