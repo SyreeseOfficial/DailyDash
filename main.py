@@ -3,6 +3,10 @@ import time
 import sys
 import os
 import threading
+try:
+    from plyer import notification
+except ImportError:
+    notification = None
 
 # Hide Pygame support prompt
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
@@ -20,6 +24,7 @@ try:
 
     from modules.data_handler import DataManager
     from modules.audio_manager import AudioManager
+    from modules.clipboard_manager import ClipboardManager
     from modules.weather_api import get_weather_for_city
     import psutil
 except ImportError as e:
@@ -36,6 +41,8 @@ console = Console()
 data_manager = DataManager()
 # Audio manager might be needed for noise command
 audio_manager = AudioManager()
+# Clipboard Manager
+clipboard_manager = ClipboardManager(data_manager)
 
 def get_system_vitals():
     cpu = psutil.cpu_percent(interval=0.1)
@@ -63,14 +70,28 @@ def eye_strain_worker():
             # Re-check in case it was disabled during sleep
             if data_manager.get("app_settings", {}).get("nag_eye_strain", True):
                 try:
-                    subprocess.Popen(['notify-send', 'DailyDash Health', '20-20-20 Rule:\nLook at something 20 feet away for 20 seconds.'])
+                    if notification:
+                        notification.notify(
+                            title='DailyDash Health',
+                            message='20-20-20 Rule:\nLook at something 20 feet away for 20 seconds.',
+                            app_name='DailyDash',
+                            timeout=10
+                        )
+                    else:
+                        # Fallback for systems without plyer support (e.g. servers?)
+                        pass 
+
                     # Play a subtle ding if audio enabled
                     if settings.get("audio_enabled", True):
                          audio_manager.play_chime()
-                except:
+                except Exception as e:
+                    # console.print(f"[dim]Notification failed: {e}[/dim]")
                     pass
         else:
             time.sleep(60) # check again in a minute
+
+# Start Threads
+clipboard_manager.start_monitoring()
 
 # Start Eye Strain Thread
 eye_thread = threading.Thread(target=eye_strain_worker, daemon=True)
@@ -137,23 +158,12 @@ def command_status(args, show_hints=True):
     table.add_row("Weather", weather_info)
     
     # System
-    # System
     if timer_end_timestamp and timer_end_timestamp > time.time():
         end_struct = time.localtime(timer_end_timestamp)
         end_str = time.strftime("%H:%M", end_struct)
         vitals += f" | ⏳ Ends: {end_str}"
     table.add_row("System", f"[dim]{vitals}[/dim]")
-    
-    # Tasks
-    task_str = ""
-    for t in tasks:
-        icon = "[green]✔[/green]" if t["done"] else "[red]☐[/red]"
-        txt = t["text"] if t["text"] else "[dim]Empty[/dim]"
-        if t.get("budget"):
-            txt += f" [blue]({t['budget']})[/blue]"
-        task_str += f"{icon} {txt}\n"
-    table.add_row("Big 3 Tasks", task_str.strip())
-    
+
     # Health (Water + Caffeine on same line)
     water_percent = min(100, int((water / goal) * 100))
     water_color = "blue" if water_percent < 100 else "green"
@@ -165,16 +175,17 @@ def command_status(args, show_hints=True):
          health_str += f"  |  ☕ [dim]{caffeine}mg[/dim]"
     
     table.add_row("Health", health_str)
-
-    # Notes (Full Content)
-    if isinstance(notes, list):
-        note_content = "\n".join([f"- {n}" for n in notes]) if notes else "[dim]No notes[/dim]"
-    else:
-        # Fallback for legacy string support (unlikely strictly needed but safe)
-        note_content = notes.strip() if notes else "[dim]No notes[/dim]"
     
-    table.add_row("Brain Dump", note_content)
-
+    # Tasks
+    task_str = ""
+    for t in tasks:
+        icon = "[green]✔[/green]" if t["done"] else "[red]☐[/red]"
+        txt = t["text"] if t["text"] else "[dim]Empty[/dim]"
+        if t.get("budget"):
+            txt += f" [blue]({t['budget']})[/blue]"
+        task_str += f"{icon} {txt}\n"
+    table.add_row("Big 3 Tasks", task_str.strip())
+    
     # Habits
     habits = persistent.get("habits", [])
     habit_status = daily_state.get("habit_status", {})
@@ -194,6 +205,15 @@ def command_status(args, show_hints=True):
         link_str += f"{i+1}. [link={link}]{link}[/link]\n"
     link_str = link_str.strip() if link_str else "[dim]No links[/dim]"
     table.add_row("Saved URLs", link_str)
+
+    # Brain Dump (Full Content)
+    if isinstance(notes, list):
+        note_content = "\n".join([f"- {n}" for n in notes]) if notes else "[dim]No notes[/dim]"
+    else:
+        # Fallback for legacy string support (unlikely strictly needed but safe)
+        note_content = notes.strip() if notes else "[dim]No notes[/dim]"
+    
+    table.add_row("Brain Dump", note_content)
 
     console.print(table)
     
@@ -320,7 +340,10 @@ def command_setup(args):
     # 8. EOD Journal
     eod_journal = Confirm.ask("Enable End of Day Journal?", default=False)
     
-    # 9. Habits (New)
+    # 9. Clipboard
+    clipboard_en = Confirm.ask("Enable Clipboard Manager (Stores last 10 copied items)?", default=False)
+    
+    # 10. Habits (New)
     habits = []
     if Confirm.ask("Do you want to track daily habits (0-3)? (Optional)", default=True):
         for i in range(3):
@@ -340,6 +363,7 @@ def command_setup(args):
     data_manager.config["app_settings"]["history_logging"] = history_logging
     data_manager.config["app_settings"]["nag_eye_strain"] = eye_strain
     data_manager.config["app_settings"]["eod_journal_enabled"] = eod_journal
+    data_manager.config["app_settings"]["clipboard_enabled"] = clipboard_en
     
     # Save habits
     data_manager.config["persistent_data"]["habits"] = habits
@@ -606,7 +630,19 @@ def command_noise(args):
             console.print("\n[dim]Noise stopped.[/dim]")
 
 
+            audio_manager.toggle_brown_noise() # Stops
+            console.print("\n[dim]Noise stopped.[/dim]")
 
+def command_clipboard(args):
+    """
+    Shows clipboard history and allows actions.
+    """
+    settings = data_manager.get("app_settings", {})
+    if not settings.get("clipboard_enabled", False):
+        console.print("[yellow]Clipboard Manager is DISABLED in settings.[/yellow]")
+        return
+        
+    menu_clipboard()
 def cls():
     os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -655,9 +691,9 @@ def interactive_mode():
             
             # Interactive Prompt
             console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
-            console.print("[dim]w: Water | c: Coffee | t: Task | k: Timer | b: Brain Dump | s: Saved URLs | h: Habits | e: End Day | m: Menu | q: Quit[/dim]")
-            
-            choice = Prompt.ask("Command", choices=["w", "c", "t", "k", "b", "s", "h", "e", "m", "q"], default="q", show_choices=False, show_default=False)
+            console.print("[dim]w: Water | c: Coffee | t: Task | k: Timer | b: Brain Dump | s: Saved URLs | h: Habits | v: Clipboard | e: End Day | m: Menu | q: Quit[/dim]")
+
+            choice = Prompt.ask("Command", choices=["w", "c", "t", "k", "b", "s", "h", "v", "e", "m", "q"], default="q", show_choices=False, show_default=False)
             
             if choice == "q":
                 shutdown_sequence()
@@ -700,6 +736,9 @@ def interactive_mode():
             elif choice == "h":
                 # Habit Menu
                 menu_habit()
+
+            elif choice == "v":
+                command_clipboard(None)
             
             elif choice == "m":
                 menu_more_settings()
@@ -841,9 +880,10 @@ def menu_more_settings():
         console.print("4. Toggle History Logging")
         console.print("5. Toggle Eye Strain Reminder")
         console.print("6. Toggle EOD Journal")
+        console.print("7. Toggle Clipboard Manager")
         console.print("b. Back")
         
-        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "b"], default="b")
+        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "7", "b"], default="b")
         
         if choice == "b":
             break
@@ -891,6 +931,22 @@ def menu_more_settings():
             data_manager.save_config()
             status = "ON" if new_val else "OFF"
             console.print(f"[green]EOD Journal is now {status}[/green]")
+            time.sleep(1.5)
+
+        elif choice == "7":
+            curr = data_manager.get("app_settings", {}).get("clipboard_enabled", False)
+            new_val = not curr
+            data_manager.config["app_settings"]["clipboard_enabled"] = new_val
+            data_manager.save_config()
+            
+            status = "ON" if new_val else "OFF"
+            console.print(f"[green]Clipboard Manager is now {status}[/green]")
+            
+            if new_val:
+                clipboard_manager.start_monitoring()
+            else:
+                clipboard_manager.stop_monitoring()
+            
             time.sleep(1.5)
 
 def command_habit(args):
@@ -995,6 +1051,60 @@ def menu_habit():
             command_habit(args)
             time.sleep(1.0)
 
+def menu_clipboard():
+    while True:
+        cls()
+        console.print("[bold cyan]Clipboard Manager (Last 10)[/bold cyan]")
+        history = clipboard_manager.get_history()
+        
+        if not history:
+            console.print("[italic dim]History is empty.[/italic]")
+        else:
+            table = Table(show_header=True, header_style="bold magenta", box=box.SIMPLE)
+            table.add_column("ID", style="dim", width=4)
+            table.add_column("Preview", style="white")
+            
+            for idx, text in enumerate(history):
+                # Truncate preview
+                preview = text.replace("\n", " ").strip()
+                if len(preview) > 60:
+                    preview = preview[:57] + "..."
+                table.add_row(str(idx+1), preview)
+            console.print(table)
+            
+        console.print("\n[dim]c: Copy ID | d: Delete ID | x: Clear All | b: Back[/dim]")
+        choice = Prompt.ask("Action", choices=["c", "d", "x", "b"], default="b")
+        
+        if choice == "b":
+            break
+            
+        elif choice == "c":
+            if not history: 
+                continue
+            idx = IntPrompt.ask("ID to Copy")
+            if 1 <= idx <= len(history):
+                clipboard_manager.copy_to_system(idx-1)
+                console.print(f"[green]Copied item {idx}[/green]")
+                time.sleep(1.0)
+            else:
+                console.print("[red]Invalid ID[/red]")
+                time.sleep(1.0)
+                
+        elif choice == "d":
+            if not history: 
+                continue
+            idx = IntPrompt.ask("ID to Delete")
+            if 1 <= idx <= len(history):
+                clipboard_manager.delete_entry(idx-1)
+                console.print("[green]Deleted.[/green]")
+                time.sleep(1.0)
+                
+        elif choice == "x":
+            if Confirm.ask("Clear entire clipboard history?"):
+                clipboard_manager.clear_history()
+                console.print("[green]Cleared.[/green]")
+                time.sleep(1.0)
+
 
 def main():
     parser = argparse.ArgumentParser(description="DailyDash CLI")
@@ -1093,6 +1203,8 @@ def main():
         command_noise(args)
     elif args.command == "status":
          command_status(args)
+    elif args.command == "clipboard":
+         command_clipboard(args)
     else:
         # Default fallback if something weird happens (though argv=1 is caught above)
         command_status(args)

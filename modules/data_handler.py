@@ -18,6 +18,7 @@ class DataManager:
             "nag_stand_up": True,
             "nag_eye_strain": True,
             "eod_journal_enabled": False,
+            "clipboard_enabled": False,
             "history_logging": True
         },
         "daily_state": {
@@ -33,6 +34,7 @@ class DataManager:
         "persistent_data": {
             "brain_dump_content": [],
             "parking_lot_links": [],
+            "clipboard_history": [],
             "habits": []
         },
         "setup_complete": False
