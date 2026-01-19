@@ -2,6 +2,7 @@ import argparse
 import time
 import sys
 import os
+import threading
 
 # Hide Pygame support prompt
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
@@ -43,6 +44,8 @@ def get_system_vitals():
     batt = psutil.sensors_battery()
     batt_str = f"{batt.percent}%" if batt else "AC"
     return f"CPU: {cpu}% | RAM: {mem}% | Disk: {disk}% | PWR: {batt_str}"
+
+timer_end_timestamp = None
 
 import random
 
@@ -97,7 +100,7 @@ def command_status(args, show_hints=True):
     console.print(header)
     
     # 2. Main Table (No Title)
-    table = Table(box=box.ROUNDED, expand=True, padding=(1, 1))
+    table = Table(box=box.ROUNDED, expand=True, padding=(0, 1))
     table.add_column("Section", style="cyan", no_wrap=True)
     table.add_column("Content", style="white")
 
@@ -105,6 +108,11 @@ def command_status(args, show_hints=True):
     table.add_row("Weather", weather_info)
     
     # System
+    # System
+    if timer_end_timestamp and timer_end_timestamp > time.time():
+        end_struct = time.localtime(timer_end_timestamp)
+        end_str = time.strftime("%H:%M", end_struct)
+        vitals += f" | ⏳ Ends: {end_str}"
     table.add_row("System", f"[dim]{vitals}[/dim]")
     
     # Tasks
@@ -189,100 +197,7 @@ def command_end_day(args):
 
 # ... (Existing interactive_mode and main dispatcher updates)
 
-def interactive_mode():
-    """
-    Main interactive loop.
-    """
-    while True:
-        try:
-            cls()
-            # Show Dashboard
-            command_status(None, show_hints=False)
-            
-            # Interactive Prompt
-            console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
-            console.print("[dim]w: Water | k: Coffee | t: Task | c: Timer | b: Brain Dump | p: Saved URLs | e: End Day | m: Menu | q: Quit[/dim]") # Added k and e
-            
-            choice = Prompt.ask("Command", choices=["w", "k", "t", "c", "b", "p", "e", "m", "q"], default="q", show_choices=False, show_default=False)
-            
-            if choice == "q":
-                console.print("Bye!")
-                break
-                
-            elif choice == "w":
-                # Add Water (default amount)
-                args = argparse.Namespace(action="add")
-                command_water(args)
-                time.sleep(1.0) # Faster
-                
-            elif choice == "k":
-                # Coffee
-                args = argparse.Namespace(action="add")
-                command_coffee(args)
-                time.sleep(1.0)
-                
-            elif choice == "e":
-                # End Day
-                command_end_day(None)
-                
-            elif choice == "t":
-                # Task Menu
-                menu_task()
-            
-            elif choice == "c":
-                # Timer
-                mins = IntPrompt.ask("Duration (minutes)", default=25)
-                args = argparse.Namespace(duration=mins)
-                command_timer(args)
-                input("\nPress Enter to return...")
-                
-            elif choice == "b":
-                # Brain Dump
-                text = Prompt.ask("Quick Note")
-                if text:
-                    args = argparse.Namespace(action="add", text=[text])
-                    command_note(args)
-                    time.sleep(1.0)
-            
-            elif choice == "p":
-                menu_parking_lot()
-            
-            elif choice == "m":
-                menu_more_settings()
-                
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Exiting Interactive Mode...[/yellow]")
-            break
-
-def main():
-    parser = argparse.ArgumentParser(description="DailyDash CLI")
-    subparsers = parser.add_subparsers(dest="command")
-
-    # ... (Add coffee parser)
-    
-    # COFFEE Subcommand
-    coffee_parser = subparsers.add_parser("coffee", help="Track caffeine")
-    coffee_sub = coffee_parser.add_subparsers(dest="action", required=True)
-    coffee_sub.add_parser("add", help="Add cup (95mg)")
-    coffee_sub.add_parser("undo", help="Remove cup")
-    
-    # END DAY Subcommand
-    subparsers.add_parser("end", help="End day and log stats")
-
-    # ... (Rest of parsers)
-
-    if len(sys.argv) == 1:
-        interactive_mode()
-        return
-
-    args = parser.parse_args()
-
-    # Dispatcher
-    if args.command == "coffee":
-        command_coffee(args)
-    elif args.command == "end":
-        command_end_day(args)
-    # ... (Rest of dispatcher)
+# ... (Removed duplicate interactive_mode and main)
 
 
 def command_help(args):
@@ -518,32 +433,23 @@ def command_link(args):
 
 def command_timer(args):
     """
-    Blocking focus timer.
+    Non-blocking focus timer.
     """
+    global timer_end_timestamp
     duration_min = args.duration
-    total_seconds = duration_min * 60
     
-    console.print(f"[bold green]Starting Focus Timer for {duration_min} minutes...[/bold green]")
-    try:
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-        ) as progress:
-            task = progress.add_task("[cyan]Focusing...", total=total_seconds)
-            
-            while not progress.finished:
-                time.sleep(1)
-                progress.update(task, advance=1)
-                
-        console.print("[bold green]Timer Complete! Take a break.[/bold green]")
-        # Play a beep?
-        sys.stdout.write('\a')
-        sys.stdout.flush()
-        
-    except KeyboardInterrupt:
-        console.print("\n[red]Timer Cancelled.[/red]")
+    timer_end_timestamp = time.time() + duration_min * 60
+    
+    # Background thread for bell
+    def timer_bell():
+        time.sleep(duration_min * 60)
+        audio_manager.play_chime()
+
+    t = threading.Thread(target=timer_bell, daemon=True)
+    t.start()
+    
+    console.print(f"[bold green]Timer started for {duration_min} minutes.[/bold green]")
+    time.sleep(1)
 
 def command_noise(args):
     if args.action == "play":
@@ -572,10 +478,10 @@ def interactive_mode():
             command_status(None, show_hints=False)
             
             # Interactive Prompt
-            console.print("[bold cyan]Interactive Menu[/bold cyan]")
-            console.print("[dim]w: Water | k: Coffee | t: Task | c: Timer | b: Brain Dump | p: Saved URLs | e: End Day | m: Menu | q: Quit[/dim]")
+            console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
+            console.print("[dim]w: Water | c: Coffee | t: Task | k: Timer | b: Brain Dump | s: Saved URLs | e: End Day | m: Menu | q: Quit[/dim]")
             
-            choice = Prompt.ask("Command", choices=["w", "k", "t", "c", "b", "p", "e", "m", "q"], default="q", show_choices=False, show_default=False)
+            choice = Prompt.ask("Command", choices=["w", "c", "t", "k", "b", "s", "e", "m", "q"], default="q", show_choices=False, show_default=False)
             
             if choice == "q":
                 console.print("Bye!")
@@ -587,8 +493,8 @@ def interactive_mode():
                 command_water(args)
                 time.sleep(1.0)
                 
-            elif choice == "k":
-                # Coffee
+            elif choice == "c":
+                # Coffee - Changed from k
                 args = argparse.Namespace(action="add")
                 command_coffee(args)
                 time.sleep(1.0)
@@ -601,12 +507,11 @@ def interactive_mode():
                 # Task Menu
                 menu_task()
             
-            elif choice == "c":
-                # Timer
+            elif choice == "k":
+                # Timer - Changed from c
                 mins = IntPrompt.ask("Duration (minutes)", default=25)
                 args = argparse.Namespace(duration=mins)
                 command_timer(args)
-                input("\nPress Enter to return...")
                 
             elif choice == "b":
                 # Brain Dump
@@ -616,7 +521,8 @@ def interactive_mode():
                     command_note(args)
                     time.sleep(1.0)
             
-            elif choice == "p":
+            elif choice == "s":
+                # Saved URLs - Changed from p
                 menu_parking_lot()
             
             elif choice == "m":
