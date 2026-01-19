@@ -149,6 +149,8 @@ def command_status(args, show_hints=True):
     for t in tasks:
         icon = "[green]✔[/green]" if t["done"] else "[red]☐[/red]"
         txt = t["text"] if t["text"] else "[dim]Empty[/dim]"
+        if t.get("budget"):
+            txt += f" [blue]({t['budget']})[/blue]"
         task_str += f"{icon} {txt}\n"
     table.add_row("Big 3 Tasks", task_str.strip())
     
@@ -231,7 +233,7 @@ def command_end_day(args):
     """
     Logs history and resets daily state.
     """
-    if Confirm.ask("[bold red]End Day & Reset?[/bold red] This will save stats and clear daily progress."):
+    if Confirm.ask("[bold red]End Day & Reset?[/bold red] This will save stats and clear daily progress.", default=True):
         # Check setting
         logging_enabled = data_manager.get("app_settings", {}).get("history_logging", True)
         if logging_enabled:
@@ -314,7 +316,7 @@ def command_setup(args):
 
     # 7. Habits (New)
     habits = []
-    if Confirm.ask("Do you want to track daily habits (0-3)? (Optional)", default=False):
+    if Confirm.ask("Do you want to track daily habits (0-3)? (Optional)", default=True):
         for i in range(3):
             h = Prompt.ask(f"Habit #{i+1} Name (Leave empty to stop)", default="")
             if h.strip():
@@ -459,16 +461,37 @@ def command_note(args):
         
     elif action == "delete":
         try:
-            target_id = int(args.target_id)
-            if 1 <= target_id <= len(current_notes):
-                removed = current_notes.pop(target_id - 1)
-                data_manager.config["persistent_data"]["brain_dump_content"] = current_notes
-                data_manager.save_config()
-                console.print(f"[yellow]Deleted note:[/yellow] {removed}")
-            else:
-                console.print(f"[red]ID {target_id} out of range.[/red]")
+            raw_input = args.target_id
+            indices_to_delete = set()
+            
+            # Parse input like "1,2,5-7"
+            parts = raw_input.replace(" ", "").split(",")
+            for p in parts:
+                if "-" in p:
+                    start, end = map(int, p.split("-"))
+                    indices_to_delete.update(range(start, end + 1))
+                elif p:
+                    indices_to_delete.add(int(p))
+            
+            # Filter valid (1-based to 0-based check)
+            valid_indices = {i for i in indices_to_delete if 1 <= i <= len(current_notes)}
+            
+            if not valid_indices:
+                console.print(f"[red]No valid IDs found in range 1-{len(current_notes)}.[/red]")
+                return
+
+            # Delete (Filter method)
+            # We keep notes whose (index + 1) is NOT in valid_indices
+            new_notes = [n for i, n in enumerate(current_notes) if (i + 1) not in valid_indices]
+            
+            deleted_count = len(current_notes) - len(new_notes)
+            
+            data_manager.config["persistent_data"]["brain_dump_content"] = new_notes
+            data_manager.save_config()
+            console.print(f"[yellow]Deleted {deleted_count} note(s).[/yellow]")
+            
         except ValueError:
-             console.print("[red]Invalid ID.[/red]")
+             console.print("[red]Invalid format. Use IDs like '1' or '1,3' or '1-5'.[/red]")
 
 def command_link(args):
     action = args.action
@@ -527,7 +550,7 @@ def command_timer(args):
     # Check if timer is already running
     if timer_end_timestamp and timer_end_timestamp > time.time():
         remaining = int((timer_end_timestamp - time.time()) / 60)
-        if not Confirm.ask(f"[yellow]Timer already running ({remaining}m left). Cancel and start new?[/yellow]"):
+        if not Confirm.ask(f"[yellow]Timer already running ({remaining}m left). Cancel and start new?[/yellow]", default=True):
             console.print("[dim]Timer start cancelled.[/dim]")
             return
 
@@ -579,6 +602,21 @@ def command_noise(args):
 def cls():
     os.system('cls' if os.name == 'nt' else 'clear')
 
+def shutdown_sequence():
+    cls()
+    console.print(Align.center("\n\n[bold cyan]DailyDash[/bold cyan]"))
+    
+    msgs = [
+        "See you tomorrow, Legend.",
+        "Stay hard.",
+        "Focus is the key.",
+        "Rest well.",
+        "You crushed it today."
+    ]
+    msg = random.choice(msgs)
+    console.print(Align.center(f"[italic]{msg}[/italic]\n\n"))
+    sys.exit(0)
+
 def interactive_mode():
     """
     Main interactive loop.
@@ -596,7 +634,7 @@ def interactive_mode():
             choice = Prompt.ask("Command", choices=["w", "c", "t", "k", "b", "s", "h", "e", "m", "q"], default="q", show_choices=False, show_default=False)
             
             if choice == "q":
-                console.print("Bye!")
+                shutdown_sequence()
                 break
                 
             elif choice == "w":
@@ -627,11 +665,7 @@ def interactive_mode():
                 
             elif choice == "b":
                 # Brain Dump
-                text = Prompt.ask("Quick Note")
-                if text:
-                    args = argparse.Namespace(action="add", text=[text])
-                    command_note(args)
-                    time.sleep(1.0)
+                menu_note()
             
             elif choice == "s":
                 # Saved URLs - Changed from p
@@ -645,7 +679,7 @@ def interactive_mode():
                 menu_more_settings()
                 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Exiting Interactive Mode...[/yellow]")
+            shutdown_sequence()
             break
 
 def menu_task():
@@ -728,6 +762,40 @@ def menu_parking_lot():
             args = argparse.Namespace(action="open", target_id=str(target))
             command_link(args)
             time.sleep(1.5)
+
+def menu_note():
+    while True:
+        cls()
+        console.print("[bold magenta]Brain Dump (Notes)[/bold magenta]")
+        # Show list
+        args = argparse.Namespace(action="show")
+        command_note(args)
+        
+        console.print("\n[dim]a: Add | d: Delete | c: Clear All | b: Back[/dim]")
+        choice = Prompt.ask("Action", choices=["a", "d", "c", "b"], default="b", show_choices=False, show_default=False)
+        
+        if choice == "b":
+            break
+            
+        elif choice == "a":
+            text = Prompt.ask("Note content")
+            if text:
+                args = argparse.Namespace(action="add", text=[text])
+                command_note(args)
+                time.sleep(1.0)
+                
+        elif choice == "d":
+            target = Prompt.ask("Note IDs to delete (e.g. 1,3 or 1-5)")
+            if target:
+                args = argparse.Namespace(action="delete", target_id=str(target))
+                command_note(args)
+                time.sleep(1.0)
+
+        elif choice == "c":
+            if Confirm.ask("Clear ALL notes?"):
+                args = argparse.Namespace(action="clear")
+                command_note(args)
+                time.sleep(1.0)
 
 def menu_more_settings():
     while True:
