@@ -19,7 +19,8 @@ class DataManager:
             "nag_eye_strain": True,
             "eod_journal_enabled": False,
             "clipboard_enabled": False,
-            "history_logging": True
+            "history_logging": True,
+            "theme": "default"
         },
         "daily_state": {
             "last_login_date": "",

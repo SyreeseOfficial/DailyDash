@@ -26,6 +26,7 @@ try:
     from modules.audio_manager import AudioManager
     from modules.clipboard_manager import ClipboardManager
     from modules.weather_api import get_weather_for_city
+    from modules.themes import get_theme
     import psutil
 except ImportError as e:
     print(f"❌ Error: Missing dependencies. ({e})")
@@ -43,6 +44,10 @@ data_manager = DataManager()
 audio_manager = AudioManager()
 # Clipboard Manager
 clipboard_manager = ClipboardManager(data_manager)
+
+# Load Theme
+current_theme_name = data_manager.get("app_settings", {}).get("theme", "default")
+T = get_theme(current_theme_name)
 
 def get_system_vitals():
     cpu = psutil.cpu_percent(interval=0.1)
@@ -144,15 +149,15 @@ def command_status(args, show_hints=True):
     
     # 1. Header Grid
     header = Table.grid(expand=True)
-    header.add_column(justify="left", style="bold magenta")
-    header.add_column(justify="right", style="bold yellow")
+    header.add_column(justify="left", style=T["primary"])
+    header.add_column(justify="right", style=T["accent"])
     header.add_row(f"Hi {name}!", f"DailyDash - {current_date} {current_time}")
     console.print(header)
     
     # 2. Main Table (No Title)
-    table = Table(box=box.ROUNDED, expand=True, padding=(0, 1))
-    table.add_column("Section", style="cyan", no_wrap=True)
-    table.add_column("Content", style="white")
+    table = Table(box=box.ROUNDED, expand=True, padding=(0, 1), border_style=T["box"])
+    table.add_column("Section", style=T["secondary"], no_wrap=True)
+    table.add_column("Content", style=T["text"])
 
     # Weather
     table.add_row("Weather", weather_info)
@@ -174,15 +179,15 @@ def command_status(args, show_hints=True):
     else:
          health_str += f"  |  ☕ [dim]{caffeine}mg[/dim]"
     
-    table.add_row("Health", health_str)
+    table.add_row("Health", health_str, end_section=True)
     
     # Tasks
     task_str = ""
     for t in tasks:
-        icon = "[green]✔[/green]" if t["done"] else "[red]☐[/red]"
-        txt = t["text"] if t["text"] else "[dim]Empty[/dim]"
+        icon = f"[{T['success']}]✔[/{T['success']}]" if t["done"] else f"[{T['error']}]☐[/{T['error']}]"
+        txt = t["text"] if t["text"] else f"[{T['dim']}]Empty[/{T['dim']}]"
         if t.get("budget"):
-            txt += f" [blue]({t['budget']})[/blue]"
+            txt += f" [{T['dim']}]({t['budget']})[/{T['dim']}]"
         task_str += f"{icon} {txt}\n"
     table.add_row("Big 3 Tasks", task_str.strip())
     
@@ -193,25 +198,25 @@ def command_status(args, show_hints=True):
     if habits:
         for h in habits:
             is_done = habit_status.get(h, False)
-            icon = "[green]✔[/green]" if is_done else "[red]☐[/red]"
+            icon = f"[{T['success']}]✔[/{T['success']}]" if is_done else f"[{T['error']}]☐[/{T['error']}]"
             habit_str += f"{icon} {h}\n"
     else:
-        habit_str = "[dim]No habits set[/dim]"
-    table.add_row("Habits", habit_str.strip())
+        habit_str = f"[{T['dim']}]No habits set[/{T['dim']}]"
+    table.add_row("Habits", habit_str.strip(), end_section=True)
 
     # Links (Refined Title)
     link_str = ""
     for i, link in enumerate(links):
         link_str += f"{i+1}. [link={link}]{link}[/link]\n"
-    link_str = link_str.strip() if link_str else "[dim]No links[/dim]"
+    link_str = link_str.strip() if link_str else f"[{T['dim']}]No links[/{T['dim']}]"
     table.add_row("Saved URLs", link_str)
 
     # Brain Dump (Full Content)
     if isinstance(notes, list):
-        note_content = "\n".join([f"- {n}" for n in notes]) if notes else "[dim]No notes[/dim]"
+        note_content = "\n".join([f"- {n}" for n in notes]) if notes else f"[{T['dim']}]No notes[/{T['dim']}]"
     else:
         # Fallback for legacy string support (unlikely strictly needed but safe)
-        note_content = notes.strip() if notes else "[dim]No notes[/dim]"
+        note_content = notes.strip() if notes else f"[{T['dim']}]No notes[/{T['dim']}]"
     
     table.add_row("Brain Dump", note_content)
 
@@ -219,14 +224,14 @@ def command_status(args, show_hints=True):
     
     # 3. Quote (Bottom)
     quote = random.choice(QUOTES)
-    console.print(Align.center(f"[italic dim]\"{quote}\"[/italic dim]"), style="italic cyan")
+    console.print(Align.center(f"[italic {T['dim']}]\"{quote}\"[/italic {T['dim']}]"), style=f"italic {T['secondary']}")
     # Removed explicit spacer to reduce gap
 
     # Tooltips / Usage Footer
     if show_hints:
-        tips = """[dim]Try these commands:[/dim]
-[cyan]task add "Todo"[/cyan]  |  [cyan]water add[/cyan]  |  [cyan]coffee add[/cyan]  |  [cyan]timer 25[/cyan]
-[dim]Run 'python main.py help' for a full guide.[/dim]"""
+        tips = f"""[{T['dim']}]Try these commands:[/{T['dim']}]
+[{T['secondary']}]task add "Todo"[/{T['secondary']}]  |  [{T['secondary']}]water add[/{T['secondary']}]  |  [{T['secondary']}]coffee add[/{T['secondary']}]  |  [{T['secondary']}]timer 25[/{T['secondary']}]
+[{T['dim']}]Run 'python main.py help' for a full guide.[/{T['dim']}]"""
         console.print(Align.center(tips))
 
 # ... (Previous commands remain, adding new ones below)
@@ -303,7 +308,7 @@ def command_help(args):
   [green]link add <url>[/green]      Save a URL.
   [green]link open <id>[/green]      Open URL in browser.
     """
-    console.print(Panel(help_text, title="Help & Usage", border_style="green"))
+    console.print(Panel(help_text, title="Help & Usage", border_style=T["success"]))
 
 def command_setup(args):
     """Interactive setup wizard."""
@@ -380,11 +385,11 @@ def command_task(args):
     tasks = daily_state.get("tasks", [])
 
     if action == "list":
-        table = Table(title="Current Tasks", box=box.SIMPLE)
-        table.add_column("ID", style="magenta", width=4)
+        table = Table(title="Current Tasks", box=box.SIMPLE, border_style=T["box"])
+        table.add_column("ID", style=T["primary"], width=4)
         table.add_column("Status", width=8)
         table.add_column("Description")
-        table.add_column("Est. Time", style="blue")
+        table.add_column("Est. Time", style=T["secondary"])
         
         for t in tasks:
             status = "[green]DONE[/green]" if t["done"] else "[red]TODO[/red]"
@@ -469,11 +474,11 @@ def command_note(args):
 
     if action == "show":
         if not current_notes:
-            panel = Panel("[dim]No notes found.[/dim]", title="Brain Dump", border_style="yellow")
+            panel = Panel(f"[{T['dim']}]No notes found.[/{T['dim']}]", title="Brain Dump", border_style=T["warning"])
             console.print(panel)
         else:
-            table = Table(title="Brain Dump", box=box.SIMPLE, show_header=True)
-            table.add_column("ID", width=4, style="magenta")
+            table = Table(title="Brain Dump", box=box.SIMPLE, show_header=True, border_style=T["box"])
+            table.add_column("ID", width=4, style=T["primary"])
             table.add_column("Note")
             for i, note in enumerate(current_notes):
                 table.add_row(str(i+1), note)
@@ -531,9 +536,9 @@ def command_link(args):
     links = persistent.get("parking_lot_links", [])
 
     if action == "list":
-        table = Table(title="Parking Lot (Saved URLs)", box=box.SIMPLE)
-        table.add_column("ID", style="magenta", width=4)
-        table.add_column("URL", style="blue")
+        table = Table(title="Parking Lot (Saved URLs)", box=box.SIMPLE, border_style=T["box"])
+        table.add_column("ID", style=T["primary"], width=4)
+        table.add_column("URL", style=T["secondary"])
         
         for i, link in enumerate(links):
             table.add_row(str(i+1), link)
@@ -881,9 +886,10 @@ def menu_more_settings():
         console.print("5. Toggle Eye Strain Reminder")
         console.print("6. Toggle EOD Journal")
         console.print("7. Toggle Clipboard Manager")
+        console.print("8. Change Color Scheme")
         console.print("b. Back")
         
-        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "7", "b"], default="b")
+        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "b"], default="b")
         
         if choice == "b":
             break
@@ -948,6 +954,57 @@ def menu_more_settings():
                 clipboard_manager.stop_monitoring()
             
             time.sleep(1.5)
+
+        elif choice == "8":
+            menu_theme()
+
+def menu_theme():
+    """Menu to select and apply themes."""
+    from modules.themes import THEMES, get_theme
+    global T
+    
+    while True:
+        cls()
+        console.print(f"[{T['primary']}]Select Color Scheme[/{T['primary']}]")
+        console.print(f"Current: [{T['accent']}]{data_manager.get('app_settings', {}).get('theme', 'default').title()}[/{T['accent']}]\n")
+        
+        theme_names = list(THEMES.keys())
+        for i, name in enumerate(theme_names):
+            # Preview using the theme's primary color
+            preview_style = THEMES[name]["primary"]
+            console.print(f"{i+1}. [{preview_style}]{name.title()}[/{preview_style}]")
+            
+        console.print("\nb. Back")
+        
+        choice = Prompt.ask("Select Theme", choices=[str(i+1) for i in range(len(theme_names))] + ["b"], default="b")
+        
+        if choice == "b":
+            break
+            
+        else:
+            try:
+                idx = int(choice) - 1
+                if 0 <= idx < len(theme_names):
+                    new_theme = theme_names[idx]
+                    data_manager.config["app_settings"]["theme"] = new_theme
+                    data_manager.save_config()
+                    
+                    # Update global T
+                    # We need to reach into the global scope or restart
+                    # Since we are in the same process, we can update the global T
+                    # However, main.py imports T globally. 
+                    # We can update the 'T' variable if we use 'global T'
+                    # Update global T
+                    # We need to reach into the global scope or restart
+                    # Since we are in the same process, we can update the global T
+                    # However, main.py imports T globally. 
+                    T = get_theme(new_theme)
+                    
+                    console.print(f"[green]Theme changed to {new_theme.title()}![/green]")
+                    time.sleep(1.0)
+                    pass
+            except ValueError:
+                pass
 
 def command_habit(args):
     action = args.action
@@ -1058,11 +1115,11 @@ def menu_clipboard():
         history = clipboard_manager.get_history()
         
         if not history:
-            console.print("[italic dim]History is empty.[/italic]")
+            console.print(f"[italic {T['dim']}]History is empty.[/italic {T['dim']}]")
         else:
-            table = Table(show_header=True, header_style="bold magenta", box=box.SIMPLE)
-            table.add_column("ID", style="dim", width=4)
-            table.add_column("Preview", style="white")
+            table = Table(show_header=True, header_style=T["primary"], box=box.SIMPLE, border_style=T["box"])
+            table.add_column("ID", style=T["dim"], width=4)
+            table.add_column("Preview", style=T["text"])
             
             for idx, text in enumerate(history):
                 # Truncate preview
