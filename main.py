@@ -43,7 +43,7 @@ def get_system_vitals():
     batt_str = f"{batt.percent}%" if batt else "AC"
     return f"CPU: {cpu}% | RAM: {mem}% | PWR: {batt_str}"
 
-def command_status(args):
+def command_status(args, show_hints=True):
     """
     Displays the 'Head-Up Display' summary:
     - Weather & Vitals
@@ -105,10 +105,11 @@ def command_status(args):
     console.print(table)
     
     # Tooltips / Usage Footer
-    tips = """[dim]Try these commands:[/dim]
+    if show_hints:
+        tips = """[dim]Try these commands:[/dim]
 [cyan]task add "Todo"[/cyan]  |  [cyan]water add[/cyan]  |  [cyan]timer 25[/cyan]  |  [cyan]note add "Idea"[/cyan]
 [dim]Run 'python main.py help' for a full guide.[/dim]"""
-    console.print(Align.center(tips))
+        console.print(Align.center(tips))
 
 def command_help(args):
     """Display a rich help guide."""
@@ -368,6 +369,152 @@ def command_noise(args):
             console.print("\n[dim]Noise stopped.[/dim]")
 
 
+
+def cls():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def interactive_mode():
+    """
+    Main interactive loop.
+    """
+    while True:
+        try:
+            cls()
+            # Show Dashboard
+            command_status(None, show_hints=False)
+            
+            # Interactive Prompt
+            console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
+            console.print("[dim]w: Water | t: Task | c: Timer | b: Brain Dump | p: Parking Lot | m: Menu | q: Quit[/dim]")
+            
+            choice = Prompt.ask("Command", choices=["w", "t", "c", "b", "p", "m", "q"], default="q")
+            
+            if choice == "q":
+                console.print("Bye!")
+                break
+                
+            elif choice == "w":
+                # Add Water (default amount)
+                args = argparse.Namespace(action="add")
+                command_water(args)
+                time.sleep(1.5)
+                
+            elif choice == "t":
+                # Add Task
+                text = Prompt.ask("Task Description")
+                if text:
+                    args = argparse.Namespace(action="add", text=[text])
+                    command_task(args)
+                    time.sleep(1.5)
+            
+            elif choice == "c":
+                # Timer
+                mins = IntPrompt.ask("Duration (minutes)", default=25)
+                args = argparse.Namespace(duration=mins)
+                command_timer(args)
+                input("\nPress Enter to return...")
+                
+            elif choice == "b":
+                # Brain Dump
+                text = Prompt.ask("Quick Note")
+                if text:
+                    args = argparse.Namespace(action="add", text=[text])
+                    command_note(args)
+                    time.sleep(1.5)
+            
+            elif choice == "p":
+                menu_parking_lot()
+            
+            elif choice == "m":
+                menu_more_settings()
+                
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Exiting Interactive Mode...[/yellow]")
+            break
+
+def menu_parking_lot():
+    while True:
+        cls()
+        console.print("[bold magenta]Parking Lot Management[/bold magenta]")
+        # Show list
+        args = argparse.Namespace(action="list")
+        command_link(args)
+        
+        console.print("\n[dim]a: Add | d: Delete | o: Open | b: Back[/dim]")
+        choice = Prompt.ask("Action", choices=["a", "d", "o", "b"], default="b")
+        
+        if choice == "b":
+            break
+            
+        elif choice == "a":
+            url = Prompt.ask("URL to save")
+            if url:
+                args = argparse.Namespace(action="add", url=url)
+                command_link(args)
+                time.sleep(1.5)
+                
+        elif choice == "d":
+            target = IntPrompt.ask("Link ID to delete")
+            args = argparse.Namespace(action="delete", target_id=str(target))
+            command_link(args)
+            time.sleep(1.5)
+
+        elif choice == "o":
+            target = IntPrompt.ask("Link ID to open")
+            args = argparse.Namespace(action="open", target_id=str(target))
+            command_link(args)
+            time.sleep(1.5)
+
+def menu_more_settings():
+    while True:
+        cls()
+        console.print("[bold cyan]More Settings[/bold cyan]")
+        console.print("1. Remove Water (Undo)")
+        console.print("2. Clear Water Intake (Reset)")
+        console.print("3. Clear Brain Dump")
+        console.print("4. Clear Parking Lot")
+        console.print("5. Run Initial Setup")
+        console.print("b. Back")
+        
+        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "b"], default="b")
+        
+        if choice == "b":
+            break
+            
+        elif choice == "1":
+            # Undo Water
+            args = argparse.Namespace(action="undo")
+            command_water(args)
+            time.sleep(1.5)
+            
+        elif choice == "2":
+            # Reset Water
+            if Confirm.ask("Reset daily water intake to 0?"):
+                data_manager.config["daily_state"]["current_water_intake"] = 0
+                data_manager.save_config()
+                console.print("[green]Water reset.[/green]")
+                time.sleep(1.5)
+                
+        elif choice == "3":
+            # Clear Notes
+            if Confirm.ask("Clear all notes?"):
+                args = argparse.Namespace(action="clear")
+                command_note(args)
+                time.sleep(1.5)
+                
+        elif choice == "4":
+            # Clear Parking Lot
+            if Confirm.ask("Delete ALL saved links?"):
+                data_manager.config["persistent_data"]["parking_lot_links"] = []
+                data_manager.save_config()
+                console.print("[green]Parking lot cleared.[/green]")
+                time.sleep(1.5)
+
+        elif choice == "5":
+            command_setup(None)
+            input("\nPress Enter to return...")
+
+
 def main():
     parser = argparse.ArgumentParser(description="DailyDash CLI")
     subparsers = parser.add_subparsers(dest="command")
@@ -435,6 +582,11 @@ def main():
     # STATUS Subcommand
     subparsers.add_parser("status", help="Show dashboard summary")
 
+    # IF no args --> Interactive Mode
+    if len(sys.argv) == 1:
+        interactive_mode()
+        return
+
     args = parser.parse_args()
 
     # Dispatcher
@@ -457,7 +609,7 @@ def main():
     elif args.command == "status":
          command_status(args)
     else:
-        # Default
+        # Default fallback if something weird happens (though argv=1 is caught above)
         command_status(args)
 
 if __name__ == "__main__":
