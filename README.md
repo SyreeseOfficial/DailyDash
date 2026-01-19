@@ -28,29 +28,33 @@ Requirements: Python 3.10+
 
 ## Usage
 
-Run the dashboard:
+**DailyDash** is now a pure CLI tool. 
+
+### Quick Start
+View your dashboard status:
 ```bash
-./venv/bin/python main.py
+python main.py
 ```
 
-### First Run
-You will be guided through a setup wizard to configure:
-- Measurement Units (Metric/Imperial)
-- Water Container Size
-- City (for Weather)
+### Setup
+If this is your first time, run the setup wizard:
+```bash
+python main.py setup
+```
 
-### Keybindings
+### Commands
 
-| Key | Action |
+| Command | Action |
 | --- | --- |
-| **Q** | Quit |
-| **W** | Add Water |
-| **P** | Start/Pause Timer |
-| **R** | Reset Timer |
-| **N** | Toggle Brown Noise |
+| `task list` | Show tasks |
+| `task add "..."` | Add task |
+| `water add` | Log water |
+| `timer 25` | Start Focus Timer |
+| `noise play` | Play Brown Noise |
+| `note add "..."` | add a note | 
+| `help` | Show full guide |
 
-### Configuration
-Configuration is stored in `config.json` in the root directory.
+See `python main.py help` for details.
 
 ## License
 MIT
