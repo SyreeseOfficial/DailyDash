@@ -95,12 +95,42 @@ def eye_strain_worker():
         else:
             time.sleep(60) # check again in a minute
 
+# Stand Up Thread Logic
+def stand_up_worker():
+    while True:
+        settings = data_manager.get("app_settings", {})
+        enabled = settings.get("nag_stand_up", True)
+        
+        if enabled:
+            # 60 minutes = 3600 seconds
+            time.sleep(3600)
+            if data_manager.get("app_settings", {}).get("nag_stand_up", True):
+                try:
+                    if notification:
+                        notification.notify(
+                            title='DailyDash Health',
+                            message='Time to Stand Up!\nStretch your legs for a bit.',
+                            app_name='DailyDash',
+                            timeout=10
+                        )
+                    
+                    if settings.get("audio_enabled", True):
+                         audio_manager.play_chime()
+                except Exception:
+                    pass
+        else:
+            time.sleep(60)
+
 # Start Threads
 clipboard_manager.start_monitoring()
 
 # Start Eye Strain Thread
 eye_thread = threading.Thread(target=eye_strain_worker, daemon=True)
 eye_thread.start()
+
+# Start Stand Up Thread
+stand_thread = threading.Thread(target=stand_up_worker, daemon=True)
+stand_thread.start()
 
 import random
 
@@ -881,6 +911,53 @@ def menu_note():
                 command_note(args)
                 time.sleep(1.0)
 
+def menu_edit_profile():
+    while True:
+        cls()
+        console.print(f"[{T['primary']}]Edit Profile[/{T['primary']}]")
+        p = data_manager.get("user_profile", {})
+        
+        console.print(f"1. Name: {p.get('name', 'User')}")
+        console.print(f"2. City: {p.get('city', 'Unknown')}")
+        console.print(f"3. Water Goal: {p.get('daily_water_goal', 2000)}")
+        console.print(f"4. Container Size: {p.get('container_size', 250)}")
+        console.print(f"5. Caffeine Size: {p.get('caffeine_size', 50)}")
+        console.print("b. Back")
+        
+        choice = Prompt.ask("Select Field to Edit", choices=["1", "2", "3", "4", "5", "b"], default="b")
+        
+        if choice == "b":
+            break
+            
+        elif choice == "1":
+            new_val = Prompt.ask("Enter Name", default=p.get('name', 'User'))
+            data_manager.config["user_profile"]["name"] = new_val
+            data_manager.save_config()
+            
+        elif choice == "2":
+            new_val = Prompt.ask("Enter City", default=p.get('city', 'New York'))
+            data_manager.config["user_profile"]["city"] = new_val
+            data_manager.save_config()
+            # Force update weather cache? 
+            # Ideally modules.weather_api._weather_cache should be cleared or updated, but a restart fixes it.
+            console.print("[yellow]Weather will update on next refresh.[/yellow]")
+            time.sleep(1.5)
+
+        elif choice == "3":
+            new_val = IntPrompt.ask("Enter Daily Water Goal", default=p.get('daily_water_goal', 2000))
+            data_manager.config["user_profile"]["daily_water_goal"] = new_val
+            data_manager.save_config()
+
+        elif choice == "4":
+            new_val = IntPrompt.ask("Enter Container Size", default=p.get('container_size', 250))
+            data_manager.config["user_profile"]["container_size"] = new_val
+            data_manager.save_config()
+
+        elif choice == "5":
+            new_val = IntPrompt.ask("Enter Caffeine Cup Size", default=p.get('caffeine_size', 50))
+            data_manager.config["user_profile"]["caffeine_size"] = new_val
+            data_manager.save_config()
+
 def menu_more_settings():
     while True:
         cls()
@@ -892,10 +969,13 @@ def menu_more_settings():
         console.print("5. Toggle Eye Strain Reminder")
         console.print("6. Toggle EOD Journal")
         console.print("7. Toggle Clipboard Manager")
-        console.print("8. Change Color Scheme")
+        console.print("8. Toggle Audio")
+        console.print("9. Toggle Stand Up Reminder")
+        console.print("10. Edit Profile")
+        console.print("11. Change Color Scheme")
         console.print("b. Back")
         
-        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "b"], default="b")
+        choice = Prompt.ask("Select Option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "b"], default="b")
         
         if choice == "b":
             break
@@ -962,6 +1042,27 @@ def menu_more_settings():
             time.sleep(1.5)
 
         elif choice == "8":
+            curr = data_manager.get("app_settings", {}).get("audio_enabled", True)
+            new_val = not curr
+            data_manager.config["app_settings"]["audio_enabled"] = new_val
+            data_manager.save_config()
+            status = "ON" if new_val else "OFF"
+            console.print(f"[green]Audio is now {status}[/green]")
+            time.sleep(1.5)
+
+        elif choice == "9":
+            curr = data_manager.get("app_settings", {}).get("nag_stand_up", True)
+            new_val = not curr
+            data_manager.config["app_settings"]["nag_stand_up"] = new_val
+            data_manager.save_config()
+            status = "ON" if new_val else "OFF"
+            console.print(f"[green]Stand Up Reminder is now {status}[/green]")
+            time.sleep(1.5)
+
+        elif choice == "10":
+            menu_edit_profile()
+
+        elif choice == "11":
             menu_theme()
 
 def menu_theme():
