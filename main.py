@@ -173,11 +173,11 @@ def command_status(args, show_hints=True):
     water_percent = min(100, int((water / goal) * 100))
     water_color = "blue" if water_percent < 100 else "green"
     
-    health_str = f"💧 [{water_color}]{water}ml[/] / {goal}ml ({water_percent}%)"
+    health_str = f":droplet: [{water_color}]{water}ml[/] / {goal}ml ({water_percent}%)"
     if caffeine > 0:
-         health_str += f"  |  ☕ [yellow]{caffeine}mg[/yellow]"
+         health_str += f"  |  :coffee: [yellow]{caffeine}mg[/yellow]"
     else:
-         health_str += f"  |  ☕ [dim]{caffeine}mg[/dim]"
+         health_str += f"  |  :coffee: [dim]{caffeine}mg[/dim]"
     
     table.add_row("Health", health_str, end_section=True)
     

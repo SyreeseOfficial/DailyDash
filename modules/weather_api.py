@@ -59,15 +59,15 @@ def get_weather_for_city(city_name, unit_system="metric"):
 
             # Simple condition mapping
             code = cw.get("weathercode", 0)
-            icon = "☀️"
-            if code > 3: icon = "☁️"
-            if code > 50: icon = "🌧️"
-            if code > 70: icon = "❄️"
+            icon = ":sunny:" # Rich markup
+            if code > 3: icon = ":cloud:" 
+            if code > 50: icon = ":cloud_with_rain:"
+            if code > 70: icon = ":snowflake:"
             
             unit_ci = "F" if unit_system == "imperial" else "C"
             unit_sp = "mph" if unit_system == "imperial" else "km/h"
             
-            result = f"{city_name}: {icon} {temp}°{unit_ci} | 💧 {hum}% | 💨 {wind}{unit_sp}"
+            result = f"{city_name}: {icon}  {temp}°{unit_ci} | :droplet: {hum}% | :dash: {wind}{unit_sp}"
             
             # Update Cache
             _weather_cache["city"] = city_name
