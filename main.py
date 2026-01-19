@@ -45,7 +45,36 @@ def get_system_vitals():
     batt_str = f"{batt.percent}%" if batt else "AC"
     return f"CPU: {cpu}% | RAM: {mem}% | Disk: {disk}% | PWR: {batt_str}"
 
+import subprocess
 timer_end_timestamp = None
+current_timer_id = None
+
+# Eye Strain Thread Logic
+def eye_strain_worker():
+    while True:
+        # Check config inside loop so we respect changes (simple poll)
+        # Note: In a real app we might want better signaling, but this suffices for CLI
+        settings = data_manager.get("app_settings", {})
+        enabled = settings.get("nag_eye_strain", True)
+        
+        if enabled:
+            # 20 minutes = 1200 seconds
+            time.sleep(1200)
+            # Re-check in case it was disabled during sleep
+            if data_manager.get("app_settings", {}).get("nag_eye_strain", True):
+                try:
+                    subprocess.Popen(['notify-send', 'DailyDash Health', '20-20-20 Rule:\nLook at something 20 feet away for 20 seconds.'])
+                    # Play a subtle ding if audio enabled
+                    if settings.get("audio_enabled", True):
+                         audio_manager.play_chime()
+                except:
+                    pass
+        else:
+            time.sleep(60) # check again in a minute
+
+# Start Eye Strain Thread
+eye_thread = threading.Thread(target=eye_strain_worker, daemon=True)
+eye_thread.start()
 
 import random
 
@@ -136,8 +165,26 @@ def command_status(args, show_hints=True):
     table.add_row("Health", health_str)
 
     # Notes (Full Content)
-    note_content = notes.strip() if notes else "[dim]No notes[/dim]"
+    if isinstance(notes, list):
+        note_content = "\n".join([f"- {n}" for n in notes]) if notes else "[dim]No notes[/dim]"
+    else:
+        # Fallback for legacy string support (unlikely strictly needed but safe)
+        note_content = notes.strip() if notes else "[dim]No notes[/dim]"
+    
     table.add_row("Brain Dump", note_content)
+
+    # Habits
+    habits = persistent.get("habits", [])
+    habit_status = daily_state.get("habit_status", {})
+    habit_str = ""
+    if habits:
+        for h in habits:
+            is_done = habit_status.get(h, False)
+            icon = "[green]✔[/green]" if is_done else "[red]☐[/red]"
+            habit_str += f"{icon} {h}\n"
+    else:
+        habit_str = "[dim]No habits set[/dim]"
+    table.add_row("Habits", habit_str.strip())
 
     # Links (Refined Title)
     link_str = ""
@@ -265,6 +312,16 @@ def command_setup(args):
     # 6. Logging
     history_logging = Confirm.ask("Log daily history to CSV?", default=True)
 
+    # 7. Habits (New)
+    habits = []
+    if Confirm.ask("Do you want to track daily habits (0-3)? (Optional)", default=False):
+        for i in range(3):
+            h = Prompt.ask(f"Habit #{i+1} Name (Leave empty to stop)", default="")
+            if h.strip():
+                habits.append(h.strip())
+            else:
+                break
+
     # Save
     data_manager.config["user_profile"]["name"] = name
     data_manager.config["user_profile"]["unit_system"] = unit_system
@@ -273,6 +330,10 @@ def command_setup(args):
     data_manager.config["user_profile"]["daily_water_goal"] = goal
     data_manager.config["user_profile"]["caffeine_size"] = caffeine_size
     data_manager.config["app_settings"]["history_logging"] = history_logging
+    
+    # Save habits
+    data_manager.config["persistent_data"]["habits"] = habits
+    data_manager.config["daily_state"]["habit_status"] = {h: False for h in habits}
     
     data_manager.config["setup_complete"] = True
     
@@ -289,21 +350,27 @@ def command_task(args):
         table.add_column("ID", style="magenta", width=4)
         table.add_column("Status", width=8)
         table.add_column("Description")
+        table.add_column("Est. Time", style="blue")
         
         for t in tasks:
             status = "[green]DONE[/green]" if t["done"] else "[red]TODO[/red]"
-            table.add_row(str(t["id"]), status, t["text"] or "[dim]Empty[/dim]")
+            budget = f"({t['budget']})" if t.get("budget") else ""
+            table.add_row(str(t["id"]), status, t["text"] or "[dim]Empty[/dim]", budget)
         console.print(table)
         
     elif action == "add":
         text = " ".join(args.text)
+        budget = args.budget if hasattr(args, 'budget') else None
+        
         found = False
         for t in tasks:
             if not t["text"]:
                 t["text"] = text
                 t["done"] = False
+                t["budget"] = budget
                 found = True
-                console.print(f"[green]Added task to slot {t['id']}:[/green] {text}")
+                budget_str = f" [blue]({budget})[/blue]" if budget else ""
+                console.print(f"[green]Added task to slot {t['id']}:[/green] {text}{budget_str}")
                 break
         if not found:
             console.print("[yellow]All 3 task slots are full. Use 'task done <id>' or 'task delete <id>' first.[/yellow]")
@@ -361,27 +428,47 @@ def command_water(args):
 def command_note(args):
     action = args.action
     persistent = data_manager.get("persistent_data", {})
-    current_notes = persistent.get("brain_dump_content", "")
+    # It should be a list now due to migration
+    current_notes = persistent.get("brain_dump_content", [])
+    if isinstance(current_notes, str):
+        current_notes = [] # Fallback if migration failed or empty
 
     if action == "show":
-        panel = Panel(current_notes if current_notes else "[dim]No notes found.[/dim]", title="Brain Dump", border_style="yellow")
-        console.print(panel)
+        if not current_notes:
+            panel = Panel("[dim]No notes found.[/dim]", title="Brain Dump", border_style="yellow")
+            console.print(panel)
+        else:
+            table = Table(title="Brain Dump", box=box.SIMPLE, show_header=True)
+            table.add_column("ID", width=4, style="magenta")
+            table.add_column("Note")
+            for i, note in enumerate(current_notes):
+                table.add_row(str(i+1), note)
+            console.print(table)
         
     elif action == "add":
         new_text = " ".join(args.text)
-        if current_notes:
-            current_notes += f"\n- {new_text}"
-        else:
-            current_notes = f"- {new_text}"
-            
+        current_notes.append(new_text)
         data_manager.config["persistent_data"]["brain_dump_content"] = current_notes
         data_manager.save_config()
         console.print("[green]Note added![/green]")
         
     elif action == "clear":
-        data_manager.config["persistent_data"]["brain_dump_content"] = ""
+        data_manager.config["persistent_data"]["brain_dump_content"] = []
         data_manager.save_config()
         console.print("[yellow]Brain dump cleared.[/yellow]")
+        
+    elif action == "delete":
+        try:
+            target_id = int(args.target_id)
+            if 1 <= target_id <= len(current_notes):
+                removed = current_notes.pop(target_id - 1)
+                data_manager.config["persistent_data"]["brain_dump_content"] = current_notes
+                data_manager.save_config()
+                console.print(f"[yellow]Deleted note:[/yellow] {removed}")
+            else:
+                console.print(f"[red]ID {target_id} out of range.[/red]")
+        except ValueError:
+             console.print("[red]Invalid ID.[/red]")
 
 def command_link(args):
     action = args.action
@@ -435,17 +522,42 @@ def command_timer(args):
     """
     Non-blocking focus timer.
     """
-    global timer_end_timestamp
-    duration_min = args.duration
+    global timer_end_timestamp, current_timer_id
     
+    # Check if timer is already running
+    if timer_end_timestamp and timer_end_timestamp > time.time():
+        remaining = int((timer_end_timestamp - time.time()) / 60)
+        if not Confirm.ask(f"[yellow]Timer already running ({remaining}m left). Cancel and start new?[/yellow]"):
+            console.print("[dim]Timer start cancelled.[/dim]")
+            return
+
+    duration_min = args.duration
     timer_end_timestamp = time.time() + duration_min * 60
     
+    # Generate unique ID for this timer instance
+    this_timer_id = time.time()
+    current_timer_id = this_timer_id
+    
     # Background thread for bell
-    def timer_bell():
-        time.sleep(duration_min * 60)
-        audio_manager.play_chime()
+    def timer_bell(timer_id):
+        total_seconds = duration_min * 60
+        time.sleep(total_seconds)
+        
+        # Check if this timer is still the active one
+        if current_timer_id == timer_id:
+            audio_manager.play_chime()
+            
+            # Desktop Notification
+            try:
+                subprocess.Popen(['notify-send', 'DailyDash Timer', 'Time is up! Take a break.'])
+            except FileNotFoundError:
+                # notify-send might not be installed
+                pass
+            except Exception as e:
+                # unexpected error
+                pass
 
-    t = threading.Thread(target=timer_bell, daemon=True)
+    t = threading.Thread(target=timer_bell, args=(this_timer_id,), daemon=True)
     t.start()
     
     console.print(f"[bold green]Timer started for {duration_min} minutes.[/bold green]")
@@ -479,9 +591,9 @@ def interactive_mode():
             
             # Interactive Prompt
             console.print("\n[bold cyan]Interactive Menu[/bold cyan]")
-            console.print("[dim]w: Water | c: Coffee | t: Task | k: Timer | b: Brain Dump | s: Saved URLs | e: End Day | m: Menu | q: Quit[/dim]")
+            console.print("[dim]w: Water | c: Coffee | t: Task | k: Timer | b: Brain Dump | s: Saved URLs | h: Habits | e: End Day | m: Menu | q: Quit[/dim]")
             
-            choice = Prompt.ask("Command", choices=["w", "c", "t", "k", "b", "s", "e", "m", "q"], default="q", show_choices=False, show_default=False)
+            choice = Prompt.ask("Command", choices=["w", "c", "t", "k", "b", "s", "h", "e", "m", "q"], default="q", show_choices=False, show_default=False)
             
             if choice == "q":
                 console.print("Bye!")
@@ -524,6 +636,10 @@ def interactive_mode():
             elif choice == "s":
                 # Saved URLs - Changed from p
                 menu_parking_lot()
+
+            elif choice == "h":
+                # Habit Menu
+                menu_habit()
             
             elif choice == "m":
                 menu_more_settings()
@@ -540,16 +656,25 @@ def menu_task():
         args = argparse.Namespace(action="list")
         command_task(args)
         
-        console.print("\n[dim]a: Add | d: Delete | c: Clear All | b: Back[/dim]")
-        choice = Prompt.ask("Action", choices=["a", "d", "c", "b"], default="b", show_choices=False, show_default=False)
+        console.print("\n[dim]x: Mark Done | a: Add | d: Delete | c: Clear All | b: Back[/dim]")
+        choice = Prompt.ask("Action", choices=["x", "a", "d", "c", "b"], default="b", show_choices=False, show_default=False)
         
         if choice == "b":
             break
             
+        elif choice == "x":
+            target = IntPrompt.ask("Task ID to mark done")
+            args = argparse.Namespace(action="done", target_id=str(target))
+            command_task(args)
+            time.sleep(1.0)
+            
         elif choice == "a":
             text = Prompt.ask("Task Description")
             if text:
-                args = argparse.Namespace(action="add", text=[text])
+                budget = Prompt.ask("Time Budget (Optional, e.g. 30m)", default="")
+                budget_arg = budget if budget else None
+                
+                args = argparse.Namespace(action="add", text=[text], budget=budget_arg)
                 command_task(args)
                 time.sleep(1.0)
                 
@@ -673,6 +798,108 @@ def menu_more_settings():
             console.print(f"[green]Caffeine size updated to {new_val}mg[/green]")
             time.sleep(1.5)
 
+def command_habit(args):
+    action = args.action
+    persistent = data_manager.get("persistent_data", {})
+    daily = data_manager.get("daily_state", {})
+    
+    habits = persistent.get("habits", [])
+    habit_status = daily.get("habit_status", {})
+    
+    if action == "list":
+        table = Table(title="Daily Habits", box=box.SIMPLE)
+        table.add_column("ID", width=4)
+        table.add_column("Status", width=8)
+        table.add_column("Habit")
+        
+        for i, h in enumerate(habits):
+            status = "[green]DONE[/green]" if habit_status.get(h, False) else "[red]TODO[/red]"
+            table.add_row(str(i+1), status, h)
+        console.print(table)
+        
+    elif action == "add":
+        if len(habits) >= 3:
+            console.print("[red]Max 3 habits allowed.[/red]")
+            return
+            
+        name = " ".join(args.name)
+        if name not in habits:
+            habits.append(name)
+            habit_status[name] = False # Init for today
+            
+            data_manager.config["persistent_data"]["habits"] = habits
+            data_manager.config["daily_state"]["habit_status"] = habit_status
+            data_manager.save_config()
+            console.print(f"[green]Habit added:[/green] {name}")
+        else:
+            console.print("[yellow]Habit already exists.[/yellow]")
+            
+    elif action == "delete":
+        try:
+            target_id = int(args.target_id)
+            if 1 <= target_id <= len(habits):
+                removed = habits.pop(target_id - 1)
+                # Cleanup status
+                if removed in habit_status:
+                    del habit_status[removed]
+                    
+                data_manager.config["persistent_data"]["habits"] = habits
+                data_manager.config["daily_state"]["habit_status"] = habit_status
+                data_manager.save_config()
+                console.print(f"[yellow]Habit removed:[/yellow] {removed}")
+            else:
+                console.print(f"[red]ID {target_id} out of range.[/red]")
+        except ValueError:
+             console.print("[red]Invalid ID.[/red]")
+
+    elif action == "done":
+        try:
+            target_id = int(args.target_id)
+            if 1 <= target_id <= len(habits):
+                h_name = habits[target_id - 1]
+                habit_status[h_name] = True
+                
+                data_manager.config["daily_state"]["habit_status"] = habit_status
+                data_manager.save_config()
+                console.print(f"[green]Good job![/green] Completed: {h_name}")
+            else:
+                console.print(f"[red]ID {target_id} out of range.[/red]")
+        except ValueError:
+             console.print("[red]Invalid ID.[/red]")
+
+def menu_habit():
+    while True:
+        cls()
+        console.print("[bold magenta]Habit Tracker[/bold magenta]")
+        
+        args = argparse.Namespace(action="list")
+        command_habit(args)
+        
+        console.print("\n[dim]x: Mark Done | a: Add | d: Delete | b: Back[/dim]")
+        choice = Prompt.ask("Action", choices=["x", "a", "d", "b"], default="b", show_choices=False, show_default=False)
+        
+        if choice == "b":
+            break
+            
+        elif choice == "x":
+            target = IntPrompt.ask("Habit ID to mark done")
+            args = argparse.Namespace(action="done", target_id=str(target))
+            command_habit(args)
+            time.sleep(1.0)
+            
+        elif choice == "a":
+            text = Prompt.ask("New Habit Name")
+            if text:
+                args = argparse.Namespace(action="add", name=[text])
+                command_habit(args)
+                time.sleep(1.0)
+
+        elif choice == "d":
+            target = IntPrompt.ask("Habit ID to delete")
+            args = argparse.Namespace(action="delete", target_id=str(target))
+            command_habit(args)
+            time.sleep(1.0)
+
 
 def main():
     parser = argparse.ArgumentParser(description="DailyDash CLI")
@@ -692,6 +919,7 @@ def main():
     
     add_p = task_sub.add_parser("add", help="Add a task")
     add_p.add_argument("text", nargs="+", help="Task description")
+    add_p.add_argument("--budget", "-b", help="Time budget (e.g. 30m, 1h)")
     
     done_p = task_sub.add_parser("done", help="Mark task as done")
     done_p.add_argument("target_id", help="Task ID (1-3)")
@@ -714,6 +942,9 @@ def main():
     
     note_add = note_sub.add_parser("add", help="Add a note")
     note_add.add_argument("text", nargs="+", help="Note content")
+    
+    note_del = note_sub.add_parser("delete", help="Delete a specific note")
+    note_del.add_argument("target_id", help="Note ID")
 
     # LINK Subcommand
     link_parser = subparsers.add_parser("link", help="Parking Lot links")

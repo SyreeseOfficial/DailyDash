@@ -79,5 +79,7 @@ def get_weather_for_city(city_name, unit_system="metric"):
         
         return "Weather Unavailable"
 
+    except requests.exceptions.RequestException:
+        return "Weather: Connection Error"
     except Exception as e:
-        return f"Weather Error: {e}"
+        return f"Weather Error: {str(e)[:20]}..."

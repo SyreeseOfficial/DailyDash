@@ -23,18 +23,16 @@ class DataManager:
             "last_login_date": "",
             "current_water_intake": 0,
             "tasks": [
-                {"id": 1, "text": "", "done": False},
-                {"id": 2, "text": "", "done": False},
-                {"id": 3, "text": "", "done": False}
+                {"id": 1, "text": "", "done": False, "budget": None},
+                {"id": 2, "text": "", "done": False, "budget": None},
+                {"id": 3, "text": "", "done": False, "budget": None}
             ],
-            "habit_streak": {
-                "code": False,
-                "no_sugar": False
-            }
+            "habit_status": {}
         },
         "persistent_data": {
-            "brain_dump_content": "",
-            "parking_lot_links": []
+            "brain_dump_content": [],
+            "parking_lot_links": [],
+            "habits": []
         },
         "setup_complete": False
     }
@@ -53,9 +51,27 @@ class DataManager:
         
         try:
             with open(CONFIG_PATH, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                
+            # MIGRATION: Notes string -> list
+            notes = data.get("persistent_data", {}).get("brain_dump_content", "")
+            if isinstance(notes, str):
+                if notes.strip():
+                    # Split by newlines, clean up bullet points if they exist
+                    lines = [line.strip().lstrip("- ").strip() for line in notes.split('\n') if line.strip()]
+                    data["persistent_data"]["brain_dump_content"] = lines
+                else:
+                    data["persistent_data"]["brain_dump_content"] = []
+
+            # MIGRATION: Ensure Tasks have 'budget'
+            tasks = data.get("daily_state", {}).get("tasks", [])
+            for t in tasks:
+                 if "budget" not in t:
+                     t["budget"] = None
+                     
+            return data
+            
         except (json.JSONDecodeError, IOError):
-            # Backup corrupt config ?
             return self.get_default_config()
 
     def save_config(self):
@@ -83,12 +99,14 @@ class DataManager:
         self.config["daily_state"]["current_water_intake"] = 0
         self.config["daily_state"]["current_caffeine_intake"] = 0 # Reset Caffeine
         self.config["daily_state"]["tasks"] = [
-            {"id": 1, "text": "", "done": False},
-            {"id": 2, "text": "", "done": False},
-            {"id": 3, "text": "", "done": False}
+            {"id": 1, "text": "", "done": False, "budget": None},
+            {"id": 2, "text": "", "done": False, "budget": None},
+            {"id": 3, "text": "", "done": False, "budget": None}
         ]
-        self.config["daily_state"]["habit_streak"]["code"] = False
-        self.config["daily_state"]["habit_streak"]["no_sugar"] = False
+        
+        # Reset habit statuses for the new day
+        current_habits = self.config["persistent_data"].get("habits", [])
+        self.config["daily_state"]["habit_status"] = {h: False for h in current_habits}
         
         self.save_config()
 
