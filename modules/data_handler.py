@@ -1,8 +1,34 @@
 import json
 import os
+import shutil
+from pathlib import Path
 from datetime import datetime, date, timedelta
 
-CONFIG_PATH = "config.json"
+# User Config Directory
+def get_config_dir():
+    """Returns the user config directory (e.g. ~/.config/dailydash)"""
+    home = Path.home()
+    if os.name == 'nt':
+        base = home / "AppData" / "Roaming"
+    else:
+        base = home / ".config"
+        
+    path = base / "dailydash"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+CONFIG_DIR = get_config_dir()
+CONFIG_FILE = CONFIG_DIR / "config.json"
+HISTORY_FILE = CONFIG_DIR / "daily_history.csv"
+
+# Legacy check (for local development or old installs)
+LOCAL_CONFIG = Path("config.json")
+if LOCAL_CONFIG.exists() and not CONFIG_FILE.exists():
+    try:
+        shutil.copy(LOCAL_CONFIG, CONFIG_FILE)
+        print(f"Migrated local config to {CONFIG_FILE}")
+    except Exception as e:
+        print(f"Migration error: {e}")
 
 class DataManager:
     DEFAULT_CONFIG = {
@@ -26,6 +52,7 @@ class DataManager:
         "daily_state": {
             "last_login_date": "",
             "current_water_intake": 0,
+            "current_caffeine_intake": 0,
             "tasks": [
                 {"id": 1, "text": "", "done": False, "budget": None},
                 {"id": 2, "text": "", "done": False, "budget": None},
@@ -44,25 +71,22 @@ class DataManager:
 
     def __init__(self):
         self.config = self.load_config()
-        # We don't auto-save setup here anymore to allow UI flow to handle it
-        # self.check_new_day()
 
     def get_default_config(self):
         return self.DEFAULT_CONFIG.copy()
 
     def load_config(self):
-        if not os.path.exists(CONFIG_PATH):
+        if not CONFIG_FILE.exists():
             return self.get_default_config()
         
         try:
-            with open(CONFIG_PATH, 'r') as f:
+            with open(CONFIG_FILE, 'r') as f:
                 data = json.load(f)
                 
             # MIGRATION: Notes string -> list
             notes = data.get("persistent_data", {}).get("brain_dump_content", "")
             if isinstance(notes, str):
                 if notes.strip():
-                    # Split by newlines, clean up bullet points if they exist
                     lines = [line.strip().lstrip("- ").strip() for line in notes.split('\n') if line.strip()]
                     data["persistent_data"]["brain_dump_content"] = lines
                 else:
@@ -81,7 +105,7 @@ class DataManager:
 
     def save_config(self):
         try:
-            with open(CONFIG_PATH, 'w') as f:
+            with open(CONFIG_FILE, 'w') as f:
                 json.dump(self.config, f, indent=4)
         except IOError as e:
             print(f"Error saving config: {e}")
@@ -90,44 +114,34 @@ class DataManager:
         """Calculates the effective date based on reset hour."""
         reset_hour = self.config.get("user_profile", {}).get("day_reset_hour", 0)
         now = datetime.now()
-        # If current hour < reset hour, we are still in 'yesterday'
         if now.hour < reset_hour:
              effective_now = now - timedelta(days=1)
              return effective_now.date().isoformat()
         return now.date().isoformat()
 
     def is_new_day(self):
-        """Returns True if today (effective) is different from last login date."""
-        # Using effective date
         today_str = self._get_effective_date()
         last_login = self.config["daily_state"].get("last_login_date", "")
         return last_login != today_str
 
-    def check_new_day(self):
-        """Deprecated: Logic moved to is_new_day + confirm_new_day"""
-        pass
-
     def confirm_new_day(self):
-        """Commit the new day reset logic to config."""
         today_str = self._get_effective_date()
         
         self.config["daily_state"]["last_login_date"] = today_str
         self.config["daily_state"]["current_water_intake"] = 0
-        self.config["daily_state"]["current_caffeine_intake"] = 0 # Reset Caffeine
+        self.config["daily_state"]["current_caffeine_intake"] = 0
         self.config["daily_state"]["tasks"] = [
             {"id": 1, "text": "", "done": False, "budget": None},
             {"id": 2, "text": "", "done": False, "budget": None},
             {"id": 3, "text": "", "done": False, "budget": None}
         ]
         
-        # Reset habit statuses for the new day
         current_habits = self.config["persistent_data"].get("habits", [])
         self.config["daily_state"]["habit_status"] = {h: False for h in current_habits}
         
         self.save_config()
 
     def log_daily_history(self, note=None):
-        """Appends or updates daily stats to daily_history.csv"""
         import csv
         
         today_str = date.today().isoformat()
@@ -136,29 +150,22 @@ class DataManager:
         caffeine = daily.get("current_caffeine_intake", 0)
         tasks_done = sum(1 for t in daily.get("tasks", []) if t["done"])
         
-        log_file = "daily_history.csv"
-        file_exists = os.path.exists(log_file)
+        file_exists = HISTORY_FILE.exists()
         
         rows = []
         header = ["Date", "Water_ml", "Caffeine_mg", "Tasks_Completed", "Daily_Note"]
         
         if file_exists:
             try:
-                with open(log_file, "r", newline='') as f:
+                with open(HISTORY_FILE, "r", newline='') as f:
                     reader = csv.DictReader(f)
-                    # Use existing fieldnames if available, otherwise default
                     file_fieldnames = reader.fieldnames if reader.fieldnames else header
-                    # Ensure Daily_Note is in fieldnames for writing later
                     if "Daily_Note" not in file_fieldnames:
                          file_fieldnames.append("Daily_Note")
-                    
                     rows = list(reader)
             except IOError:
-                # If read fails, safely assume we overwrite/start fresh or handle error
-                # For now, let's just proceed with empty rows if corrupted
                 pass
         
-        # Check if today's entry exists
         updated = False
         for row in rows:
             if row.get("Date") == today_str:
@@ -182,22 +189,18 @@ class DataManager:
             }
             rows.append(new_row)
             
-        # Write back
         try:
-            with open(log_file, "w", newline='') as f:
-                # Use the header we defined to ensure consistent order
+            with open(HISTORY_FILE, "w", newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=header)
                 writer.writeheader()
                 for row in rows:
-                    # Filter row to only include known keys
                     filtered_row = {k: row.get(k, "") for k in header}
                     writer.writerow(filtered_row)
         except IOError as e:
             print(f"Error logging history: {e}")
 
     def undo_water_intake(self):
-        """Undo the last added container of water, min 0."""
-        container = self.get("user_profile").get("container_size", 250)
+        container = self.get("user_profile", {}).get("container_size", 250)
         current = self.get("daily_state").get("current_water_intake", 0)
         
         new_val = max(0, current - container)
@@ -213,9 +216,5 @@ class DataManager:
         self.save_config()
 
 if __name__ == "__main__":
-    # Simple test
     dm = DataManager()
-    print("Config loaded:")
-    print(json.dumps(dm.config, indent=2))
-    dm.save_config()
-    print("Config saved.")
+    print(f"Config loaded from {CONFIG_FILE}")
