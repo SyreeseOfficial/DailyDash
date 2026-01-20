@@ -50,12 +50,13 @@ current_theme_name = data_manager.get("app_settings", {}).get("theme", "default"
 T = get_theme(current_theme_name)
 
 def get_system_vitals():
-    cpu = psutil.cpu_percent(interval=0.1)
+    p_cpu = psutil.cpu_percent(interval=None)
+    # If first call returns 0.0, we just show it. It will normalize on next tick.
     mem = psutil.virtual_memory().percent
     disk = psutil.disk_usage('/').percent
     batt = psutil.sensors_battery()
     batt_str = f"{batt.percent}%" if batt else "AC"
-    return f"CPU: {cpu}% | RAM: {mem}% | Disk: {disk}% | PWR: {batt_str}"
+    return f"CPU: {p_cpu}% | RAM: {mem}% | Disk: {disk}% | PWR: {batt_str}"
 
 import subprocess
 timer_end_timestamp = None
@@ -685,7 +686,8 @@ def command_clipboard(args):
         
     menu_clipboard()
 def cls():
-    os.system('cls' if os.name == 'nt' else 'clear')
+    # Fast clear using Rich or ANSI directly
+    print("\033[H\033[J", end="")
 
 def shutdown_sequence():
     # Helper to capture EOD note if enabled
