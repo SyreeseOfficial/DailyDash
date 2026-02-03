@@ -49,20 +49,17 @@ yay -S dailydash
     cd DailyDash
     ```
 
-2.  **Create a Virtual Environment** (Recommended):
+2.  **Install**:
     ```bash
-    python3 -m venv venv
-    
-    # Linux/Mac
-    source venv/bin/activate
-    
-    # Windows
-    .\venv\Scripts\activate
+    # This installs dependencies and the 'dailydash' command
+    pip3 install .
     ```
 
-3.  **Install Dependencies**:
+    *If you prefer a virtual environment (recommended):*
     ```bash
-    pip install -r requirements.txt
+    python3 -m venv venv
+    source venv/bin/activate  # or .\venv\Scripts\activate on Windows
+    pip install .
     ```
 
 ---
@@ -72,11 +69,9 @@ yay -S dailydash
 ### Quick Start
 Launch the interactive dashboard:
 ```bash
-python main.py
+dailydash
 ```
 *First run will trigger the Setup Wizard.*
-
-> **Arch Linux Users**: Simply run `dailydash` in your terminal.
 
 ### Interactive Mode
 Once running, use single-key commands:
@@ -93,10 +88,10 @@ Once running, use single-key commands:
 ### CLI Commands
 You can also run commands directly from your shell:
 ```bash
-python main.py task add "Deploy to production"
-python main.py water add
-python main.py timer 25
-python main.py note add "Idea for blog post..."
+dailydash task add "Deploy to production"
+dailydash water add
+dailydash timer 25
+dailydash note add "Idea for blog post..."
 ```
 
 See `python main.py help` for a full list of commands.
