@@ -1,9 +1,12 @@
 # DailyDash
 
-> **Status: Work In Progress (WIP)**
-> This project is currently in active development. Version 1.0 will be published to the AUR (Arch User Repository) soon. Until then, manual installation is available for all platforms.
+![DailyDash Demo](assets/dailydash.gif)
 
-**DailyDash** is a terminal-based "Head-Up Display" (HUD) designed for focus-driven developers. It combines essential productivity tools—Task Management, Pomodoro Timer, Water Tracking, and Ambient Noise—into a single, blazing-fast TUI that stays out of your way.
+> **Terminal-based Head-Up Display (HUD) for focus-driven developers.**
+
+**DailyDash** combines essential productivity tools—Task Management, Pomodoro Timer, Water Tracking, and Ambient Noise—into a single, blazing-fast TUI that stays out of your way.
+
+---
 
 ## Features
 
@@ -32,6 +35,12 @@ Visualizes your day at a glance.
 
 ## Installation
 
+### Arch Linux (AUR)
+Install using your favorite AUR helper (e.g., `yay`):
+```bash
+yay -S dailydash
+```
+
 ### Manual Installation (All Platforms)
 
 1.  **Clone the repository**:
@@ -56,9 +65,6 @@ Visualizes your day at a glance.
     pip install -r requirements.txt
     ```
 
-### Arch Linux (AUR)
-*Coming Soon! A wrapper package will be available once v1.0 is released.*
-
 ---
 
 ## Usage
@@ -70,6 +76,8 @@ python main.py
 ```
 *First run will trigger the Setup Wizard.*
 
+> **Arch Linux Users**: Simply run `dailydash` in your terminal.
+
 ### Interactive Mode
 Once running, use single-key commands:
 -   `w`: Water Tracker (Add/Undo)
@@ -80,6 +88,7 @@ Once running, use single-key commands:
 -   `b`: Brain Dump
 -   `s`: Saved URLs
 -   `m`: Toggle Settings/Themes
+-   `e`: End Day (Reset stats)
 
 ### CLI Commands
 You can also run commands directly from your shell:
